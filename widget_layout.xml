@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <!-- Header: route label + last updated -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="6dp">
+
+        <TextView
+            android:id="@+id/tv_route_label"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Fairfield → Jolimont"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <TextView
+            android:id="@+id/tv_last_updated"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Updated 12:00"
+            android:textColor="#AAFFFFFF"
+            android:textSize="9sp" />
+    </LinearLayout>
+
+    <!-- Departure Row 1 -->
+    <include
+        android:id="@+id/row_departure_1"
+        layout="@layout/widget_departure_row"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <!-- Departure Row 2 -->
+    <include
+        android:id="@+id/row_departure_2"
+        layout="@layout/widget_departure_row"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <!-- Departure Row 3 -->
+    <include
+        android:id="@+id/row_departure_3"
+        layout="@layout/widget_departure_row"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <!-- Status / No trains message -->
+    <TextView
+        android:id="@+id/tv_no_trains"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:text="No upcoming trains"
+        android:textColor="#AAFFFFFF"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
+</LinearLayout>

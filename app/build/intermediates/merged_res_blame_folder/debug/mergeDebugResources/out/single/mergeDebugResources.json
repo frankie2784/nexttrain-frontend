@@ -1,0 +1,46 @@
+[
+    {
+        "merged": "com.trainwidget.app-debug-47:/layout_activity_config.xml.flat",
+        "source": "com.trainwidget.app-main-49:/layout/activity_config.xml"
+    },
+    {
+        "merged": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-debug-47:/layout_activity_config.xml.flat",
+        "source": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-main-49:/layout/activity_config.xml"
+    },
+    {
+        "merged": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-debug-47:/layout_dialog_od_pair.xml.flat",
+        "source": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-main-49:/layout/dialog_od_pair.xml"
+    },
+    {
+        "merged": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-debug-47:/layout_item_od_pair.xml.flat",
+        "source": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-main-49:/layout/item_od_pair.xml"
+    },
+    {
+        "merged": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-debug-47:/layout_widget_layout.xml.flat",
+        "source": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-main-49:/layout/widget_layout.xml"
+    },
+    {
+        "merged": "com.trainwidget.app-debug-47:/layout_item_od_pair.xml.flat",
+        "source": "com.trainwidget.app-main-49:/layout/item_od_pair.xml"
+    },
+    {
+        "merged": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-debug-47:/drawable_widget_background.xml.flat",
+        "source": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-main-49:/drawable/widget_background.xml"
+    },
+    {
+        "merged": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-debug-47:/xml_appwidget_info.xml.flat",
+        "source": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-main-49:/xml/appwidget_info.xml"
+    },
+    {
+        "merged": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-debug-47:/layout_widget_departure_row.xml.flat",
+        "source": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-main-49:/layout/widget_departure_row.xml"
+    },
+    {
+        "merged": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-debug-47:/drawable_early_badge_bg.xml.flat",
+        "source": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-main-49:/drawable/early_badge_bg.xml"
+    },
+    {
+        "merged": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-debug-47:/drawable_delay_badge_bg.xml.flat",
+        "source": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-main-49:/drawable/delay_badge_bg.xml"
+    }
+]

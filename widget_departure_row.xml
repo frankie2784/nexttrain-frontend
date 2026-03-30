@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingVertical="2dp">
+
+    <!-- Departure time -->
+    <TextView
+        android:id="@+id/tv_departure_time"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="08:14"
+        android:textColor="#FFFFFF"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:fontFamily="sans-serif-condensed"
+        android:minWidth="58dp" />
+
+    <!-- Spacer -->
+    <Space android:layout_width="8dp" android:layout_height="1dp" />
+
+    <!-- Minutes until + platform -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tv_minutes_away"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="in 4 min"
+            android:textColor="#AAFFFFFF"
+            android:textSize="10sp" />
+
+        <TextView
+            android:id="@+id/tv_platform"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Plat 1"
+            android:textColor="#88FFFFFF"
+            android:textSize="9sp" />
+    </LinearLayout>
+
+    <!-- Delay badge -->
+    <TextView
+        android:id="@+id/tv_delay"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@drawable/delay_badge_bg"
+        android:paddingHorizontal="5dp"
+        android:paddingVertical="2dp"
+        android:text="+2m"
+        android:textColor="#FFFFFF"
+        android:textSize="9sp"
+        android:visibility="gone" />
+
+</LinearLayout>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.TrainWidget" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/nt_primary</item>
+        <item name="colorPrimaryVariant">@color/nt_primary_dark</item>
+        <item name="colorOnPrimary">@color/nt_on_primary</item>
+        <item name="colorSecondary">@color/nt_secondary</item>
+        <item name="colorOnSecondary">@color/nt_on_primary</item>
+        <item name="colorSurface">@color/nt_surface</item>
+        <item name="colorOnSurface">@color/nt_text</item>
+        <item name="android:textColorPrimary">@color/nt_text</item>
+        <item name="android:textColorSecondary">@color/nt_text</item>
+        <item name="android:colorBackground">@color/nt_bg</item>
+        <item name="android:statusBarColor">@color/nt_primary_dark</item>
+        <item name="android:navigationBarColor">@color/nt_bg</item>
+    </style>
+</resources>

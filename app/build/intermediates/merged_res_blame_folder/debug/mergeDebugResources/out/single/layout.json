@@ -1,0 +1,30 @@
+[
+    {
+        "merged": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-mergeDebugResources-46:/layout/activity_config.xml",
+        "source": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-main-49:/layout/activity_config.xml"
+    },
+    {
+        "merged": "com.trainwidget.app-mergeDebugResources-46:/layout/item_od_pair.xml",
+        "source": "com.trainwidget.app-main-49:/layout/item_od_pair.xml"
+    },
+    {
+        "merged": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-mergeDebugResources-46:/layout/widget_departure_row.xml",
+        "source": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-main-49:/layout/widget_departure_row.xml"
+    },
+    {
+        "merged": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-mergeDebugResources-46:/layout/dialog_od_pair.xml",
+        "source": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-main-49:/layout/dialog_od_pair.xml"
+    },
+    {
+        "merged": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-mergeDebugResources-46:/layout/item_od_pair.xml",
+        "source": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-main-49:/layout/item_od_pair.xml"
+    },
+    {
+        "merged": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-mergeDebugResources-46:/layout/widget_layout.xml",
+        "source": "/Users/frankie2784/.gradle/daemon/9.1.0/com.trainwidget.app-main-49:/layout/widget_layout.xml"
+    },
+    {
+        "merged": "com.trainwidget.app-mergeDebugResources-46:/layout/activity_config.xml",
+        "source": "com.trainwidget.app-main-49:/layout/activity_config.xml"
+    }
+]

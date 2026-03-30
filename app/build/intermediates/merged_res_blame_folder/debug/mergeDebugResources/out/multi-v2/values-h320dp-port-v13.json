@@ -1,0 +1,19 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.trainwidget.app-mergeDebugResources-45:/values-h320dp-port-v13/values-h320dp-port-v13.xml",
+            "map": [
+                {
+                    "source": "/Users/frankie2784/.gradle/caches/9.1.0/transforms/2f67a561c3cb1ccd208c3e2d1eb6f5d2/transformed/material-1.12.0/res/values-h320dp-port-v13/values-h320dp-port-v13.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "63",
+                        "endOffsets": "114"
+                    }
+                }
+            ]
+        }
+    ]
+}
