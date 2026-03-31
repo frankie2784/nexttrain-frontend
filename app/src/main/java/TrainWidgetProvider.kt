@@ -24,7 +24,7 @@ import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-private const val TAG = "TrainWidget"
+private const val TAG = "NextTrain"
 const val ACTION_REFRESH = "com.trainwidget.ACTION_REFRESH"
 
 class TrainWidgetProvider : AppWidgetProvider() {
@@ -69,8 +69,8 @@ class TrainWidgetProvider : AppWidgetProvider() {
             ?: prefs.getOdPairs().firstOrNull()
             ?: demoOdPair()
 
-        // If credentials are missing and there are no configured routes, show a stable demo route.
-        if (!prefs.credentialsSet && prefs.getOdPairs().isEmpty()) {
+        // If server not configured and no OD pairs, show demo.
+        if (!prefs.serverConfigured && prefs.getOdPairs().isEmpty()) {
             showLoadingState(context, manager, widgetId, activePair)
             scope.launch {
                 renderDepartures(
@@ -89,27 +89,20 @@ class TrainWidgetProvider : AppWidgetProvider() {
         showLoadingState(context, manager, widgetId, activePair)
 
         scope.launch {
-            if (!prefs.credentialsSet) {
-                renderDepartures(
-                    context = context,
-                    manager = manager,
-                    widgetId = widgetId,
-                    pair = activePair,
-                    departures = demoDepartures(),
-                    isDemoData = true
-                )
-            } else {
-                val client = PtvApiClient(prefs.devId, prefs.apiKey)
-                val departures = fetchAndFilter(client, activePair)
-                renderDepartures(
-                    context = context,
-                    manager = manager,
-                    widgetId = widgetId,
-                    pair = activePair,
-                    departures = departures,
-                    isDemoData = false
-                )
-            }
+            val client = PtvApiClient(prefs.devId, prefs.apiKey)
+            val departures = client.getDeparturesFromServer(
+                serverUrl = prefs.serverUrl,
+                stopId = activePair.originStopId,
+                directionId = activePair.directionId
+            )
+            renderDepartures(
+                context = context,
+                manager = manager,
+                widgetId = widgetId,
+                pair = activePair,
+                departures = departures,
+                isDemoData = false
+            )
         }
     }
 
@@ -178,7 +171,7 @@ class TrainWidgetProvider : AppWidgetProvider() {
         message: String
     ) {
         val views = RemoteViews(context.packageName, R.layout.widget_layout)
-        views.setTextViewText(R.id.tv_route_label, "Train Widget")
+        views.setTextViewText(R.id.tv_route_label, "Next Train")
         views.setTextViewText(R.id.tv_last_updated, "")
         views.setViewVisibility(R.id.tv_no_trains, View.VISIBLE)
         views.setTextViewText(R.id.tv_no_trains, message)
@@ -194,7 +187,7 @@ class TrainWidgetProvider : AppWidgetProvider() {
 
         val prefs = WidgetPrefs(context)
         if (prefs.notificationModeEnabled) {
-            CommuteNotificationManager.showStatus(context, "Train Widget", message)
+            CommuteNotificationManager.showStatus(context, "Next Train", message)
         } else {
             CommuteNotificationManager.clear(context)
         }
@@ -210,7 +203,7 @@ class TrainWidgetProvider : AppWidgetProvider() {
         val views = RemoteViews(context.packageName, R.layout.widget_layout)
         views.setTextViewText(
             R.id.tv_route_label,
-            nextPair?.let { "${it.originName} → ${it.destinationName}" } ?: "Train Widget"
+            nextPair?.let { "${it.originName} → ${it.destinationName}" } ?: "Next Train"
         )
         views.setTextViewText(R.id.tv_last_updated, "")
         views.setViewVisibility(R.id.tv_no_trains, View.VISIBLE)
@@ -226,7 +219,7 @@ class TrainWidgetProvider : AppWidgetProvider() {
         if (prefs.notificationModeEnabled) {
             CommuteNotificationManager.showStatus(
                 context,
-                nextPair?.let { "${it.originName} -> ${it.destinationName}" } ?: "Train Widget",
+                nextPair?.let { "${it.originName} -> ${it.destinationName}" } ?: "Next Train",
                 msg
             )
         } else {

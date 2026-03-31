@@ -1,4 +1,4 @@
-# Melbourne Train Lock Screen Widget
+# Next Train – Melbourne Lock Screen Widget
 
 An Android home/lock screen widget for Pixel 6 (Android 13+) that shows real-time
 Melbourne Metro train departures using the PTV Timetable API v3.
@@ -54,12 +54,12 @@ Or use **Run ▶** in Android Studio with your Pixel 6 connected.
 
 ### Home screen
 1. Long-press on your home screen → **Widgets**
-2. Find **Train Widget** and drag it onto the screen
+2. Find **Next Train** and drag it onto the screen
 3. The configuration screen opens automatically
 
 ### Lock screen (Pixel, Android 13+)
 1. Long-press the lock screen → **Customize** → **Add Widget**
-2. Select **Train Widget**
+2. Select **Next Train**
 3. If prompted, open the app to complete configuration
 
 ---

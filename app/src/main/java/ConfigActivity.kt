@@ -3,8 +3,8 @@ package com.trainwidget.config
 import android.Manifest
 import android.app.TimePickerDialog
 import android.appwidget.AppWidgetManager
-import android.content.pm.PackageManager
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -27,7 +27,6 @@ import com.trainwidget.data.Station
 import com.trainwidget.prefs.WidgetPrefs
 import com.trainwidget.widget.AlarmScheduler
 import com.trainwidget.widget.ACTION_REFRESH
-import com.trainwidget.widget.CommuteNotificationManager
 import com.trainwidget.widget.TrainWidgetProvider
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -58,8 +57,10 @@ class ConfigActivity : AppCompatActivity() {
 
         requestNotificationPermissionIfNeeded()
 
-        setupCredentialsSection()
-        setupNotificationModeSection()
+        findViewById<ImageButton>(R.id.btn_settings).setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
+
         setupOdPairsSection()
     }
 
@@ -76,42 +77,6 @@ class ConfigActivity : AppCompatActivity() {
                 arrayOf(Manifest.permission.POST_NOTIFICATIONS),
                 REQ_POST_NOTIFICATIONS
             )
-        }
-    }
-
-    // ── PTV credentials ───────────────────────────────────────────────────
-
-    private fun setupCredentialsSection() {
-        val etDevId = findViewById<TextInputEditText>(R.id.et_dev_id)
-        val etApiKey = findViewById<TextInputEditText>(R.id.et_api_key)
-        val btnSaveCreds = findViewById<Button>(R.id.btn_save_credentials)
-
-        etDevId.setText(prefs.devId)
-        etApiKey.setText(prefs.apiKey)
-
-        btnSaveCreds.setOnClickListener {
-            val devId = etDevId.text?.toString()?.trim() ?: ""
-            val apiKey = etApiKey.text?.toString()?.trim() ?: ""
-            if (devId.isBlank() || apiKey.isBlank()) {
-                Snackbar.make(btnSaveCreds, "Both fields are required", Snackbar.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            prefs.devId = devId
-            prefs.apiKey = apiKey
-            Snackbar.make(btnSaveCreds, "Credentials saved ✓", Snackbar.LENGTH_SHORT).show()
-        }
-    }
-
-    // ── OD Pairs list ─────────────────────────────────────────────────────
-
-    private fun setupNotificationModeSection() {
-        val switchNotification = findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.switch_notification_mode)
-        switchNotification.isChecked = prefs.notificationModeEnabled
-        switchNotification.setOnCheckedChangeListener { _, isChecked ->
-            prefs.notificationModeEnabled = isChecked
-            if (!isChecked) {
-                CommuteNotificationManager.clear(this)
-            }
         }
     }
 

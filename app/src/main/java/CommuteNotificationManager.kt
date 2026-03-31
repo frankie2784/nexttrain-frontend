@@ -13,7 +13,7 @@ import com.trainwidget.config.ConfigActivity
 import com.trainwidget.data.Departure
 import com.trainwidget.data.OdPair
 
-private const val CHANNEL_ID = "train_widget_departures"
+private const val CHANNEL_ID = "next_train_departures"
 private const val CHANNEL_NAME = "Train departures"
 private const val CHANNEL_DESC = "Live departures for lock screen notification"
 private const val NOTIFICATION_ID = 1001

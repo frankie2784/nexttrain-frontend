@@ -13,6 +13,7 @@ private const val KEY_DEV_ID = "ptv_dev_id"
 private const val KEY_API_KEY = "ptv_api_key"
 private const val KEY_OD_PAIRS = "od_pairs"
 private const val KEY_NOTIFICATION_MODE = "notification_mode_enabled"
+private const val KEY_SERVER_URL = "server_url"
 
 /**
  * Thin wrapper around SharedPreferences for all widget configuration.
@@ -34,6 +35,14 @@ class WidgetPrefs(context: Context) {
         set(v) = prefs.edit().putString(KEY_API_KEY, v).apply()
 
     val credentialsSet: Boolean get() = devId.isNotBlank() && apiKey.isNotBlank()
+
+    // ── RPi4 server URL ───────────────────────────────────────────────────
+
+    var serverUrl: String
+        get() = prefs.getString(KEY_SERVER_URL, DEFAULT_SERVER_URL) ?: DEFAULT_SERVER_URL
+        set(v) = prefs.edit().putString(KEY_SERVER_URL, v).apply()
+
+    val serverConfigured: Boolean get() = serverUrl.isNotBlank()
 
     var notificationModeEnabled: Boolean
         get() = prefs.getBoolean(KEY_NOTIFICATION_MODE, true)
@@ -113,6 +122,7 @@ class WidgetPrefs(context: Context) {
     }
 
     companion object {
+        const val DEFAULT_SERVER_URL = "http://frankipi:5050"
         fun newId(): String = UUID.randomUUID().toString()
     }
 }

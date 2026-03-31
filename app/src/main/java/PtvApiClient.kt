@@ -1,6 +1,9 @@
 package com.trainwidget.api
 
 import android.util.Log
+import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
+import com.trainwidget.data.Departure
 import com.trainwidget.data.PtvDeparture
 import com.trainwidget.data.PtvDeparturesResponse
 import kotlinx.coroutines.Dispatchers
@@ -10,8 +13,6 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
-import retrofit2.http.Path
-import retrofit2.http.Query
 import retrofit2.http.Url
 import java.net.URL
 import java.time.Instant
@@ -33,19 +34,36 @@ interface PtvRetrofitService {
     suspend fun getDepartures(@Url signedUrl: String): PtvDeparturesResponse
 }
 
+// ── RPi4 server response models ─────────────────────────────────────────────
+
+data class ServerDeparturesResponse(
+    val stop_id: String,
+    val departures: List<ServerDeparture>,
+    val timestamp: String
+)
+
+data class ServerDeparture(
+    val trip_id: String?,
+    val route_id: String?,
+    val direction_id: String?,
+    val scheduled_time: String,
+    val estimated_time: String?,
+    val delay_minutes: Int,
+    val delay_seconds: Int?,
+    val minutes_until: Long,
+    val trip_headsign: String?,
+    val platform: String?
+)
+
 // ── API Client ──────────────────────────────────────────────────────────────
 
 /**
  * PTV Timetable API v3 client.
  *
- * Authentication: Every request must be signed with HMAC-SHA1.
- *   1. Build the path+query string WITHOUT devid/signature.
- *   2. Append "?devid=DEV_ID" (or "&devid=DEV_ID").
- *   3. HMAC-SHA1 sign the resulting string using the API key.
- *   4. Append "&signature=HEX_SIGNATURE".
- *
- * Obtain credentials at:
- *   https://www.ptv.vic.gov.au/footer/data-and-reporting/datasets/ptv-timetable-api/
+ * Can operate in two modes:
+ *   1. Direct PTV API (HMAC-signed requests) — legacy / fallback.
+ *   2. RPi4 server mode — all GTFS processing runs on the server;
+ *      the widget just calls GET /departures.
  */
 class PtvApiClient(
     private val devId: String,
@@ -150,6 +168,41 @@ class PtvApiClient(
             .joinToString("") { "%02X".format(it) }
 
         return "$BASE_URL$pathWithDev&signature=$signature"
+    }
+
+    // ── RPi4 server mode ────────────────────────────────────────────────
+
+    /**
+     * Fetch departures from the RPi4 GTFS server instead of the PTV API directly.
+     * The server merges static schedule + real-time delays and returns
+     * pre-processed Departure objects.
+     */
+    suspend fun getDeparturesFromServer(
+        serverUrl: String,
+        stopId: Int,
+        directionId: Int = -1,
+        maxResults: Int = 5
+    ): List<Departure> = withContext(Dispatchers.IO) {
+        try {
+            val sb = StringBuilder("$serverUrl/departures?stop_id=$stopId")
+            sb.append("&max_results=$maxResults")
+            if (directionId >= 0) sb.append("&direction_id=$directionId")
+            val url = URL(sb.toString())
+            val json = url.readText()
+            val response = Gson().fromJson(json, ServerDeparturesResponse::class.java)
+            response.departures.map { dep ->
+                Departure(
+                    scheduledTime = dep.scheduled_time,
+                    estimatedTime = dep.estimated_time,
+                    delayMinutes = dep.delay_minutes,
+                    platformNumber = dep.platform,
+                    minutesUntilDeparture = dep.minutes_until
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to fetch departures from server $serverUrl", e)
+            emptyList()
+        }
     }
 
     companion object {

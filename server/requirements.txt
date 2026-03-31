@@ -1,0 +1,5 @@
+flask==3.1.*
+gunicorn==23.*
+gtfs-realtime-bindings==1.0.*
+requests==2.32.*
+apscheduler==3.10.*

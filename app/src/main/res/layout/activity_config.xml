@@ -6,31 +6,48 @@
     android:orientation="vertical"
     android:background="@color/nt_bg">
 
-    <LinearLayout
+    <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="200dp"
+        android:layout_height="wrap_content"
         android:background="@color/nt_primary"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:padding="20dp">
+        android:fitsSystemWindows="true">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:text="Next Train"
-            android:textColor="@color/nt_on_primary"
-            android:textSize="42sp"
-            android:textStyle="bold" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="20dp">
 
-        <ImageView
-            android:layout_width="64dp"
-            android:layout_height="64dp"
-            android:layout_marginTop="12dp"
-            android:src="@android:drawable/ic_menu_directions"
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text="Next Train"
+                android:textColor="@color/nt_on_primary"
+                android:textSize="42sp"
+                android:textStyle="bold" />
+
+            <ImageView
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:layout_marginTop="12dp"
+                android:src="@android:drawable/ic_menu_directions"
+                android:tint="@color/nt_on_primary"
+                android:contentDescription="Train icon" />
+        </LinearLayout>
+
+        <ImageButton
+            android:id="@+id/btn_settings"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_gravity="top|end"
+            android:layout_margin="12dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_preferences"
             android:tint="@color/nt_on_primary"
-            android:contentDescription="Train icon" />
-    </LinearLayout>
+            android:contentDescription="Settings" />
+    </FrameLayout>
 
     <ScrollView
         android:layout_width="match_parent"
@@ -43,108 +60,6 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:padding="16dp">
-
-            <com.google.android.material.card.MaterialCardView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
-                app:cardBackgroundColor="@color/nt_surface"
-                app:cardCornerRadius="12dp"
-                app:cardElevation="0dp"
-                app:strokeColor="@color/nt_divider"
-                app:strokeWidth="1dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="PTV API Credentials"
-                        android:textAppearance="?attr/textAppearanceTitleMedium"
-                        android:textSize="22sp"
-                        android:textColor="@color/nt_text"
-                        android:layout_marginBottom="4dp" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="Get your free Developer ID and API Key at ptv.vic.gov.au/timetable-api"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
-                        android:textSize="14sp"
-                        android:textColor="@color/nt_text"
-                        android:layout_marginBottom="12dp" />
-
-                    <com.google.android.material.textfield.TextInputLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:hint="Developer ID"
-                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-                        android:layout_marginBottom="8dp">
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/et_dev_id"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:inputType="number" />
-                    </com.google.android.material.textfield.TextInputLayout>
-
-                    <com.google.android.material.textfield.TextInputLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:hint="API Key"
-                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
-                        android:layout_marginBottom="12dp">
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/et_api_key"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:inputType="textNoSuggestions" />
-                    </com.google.android.material.textfield.TextInputLayout>
-
-                    <Button
-                        android:id="@+id/btn_save_credentials"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Save Credentials"
-                        style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
-
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:background="@color/nt_divider"
-                        android:layout_marginTop="16dp"
-                        android:layout_marginBottom="12dp" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="Lock screen notification"
-                        android:textAppearance="?attr/textAppearanceTitleMedium"
-                        android:textSize="22sp"
-                        android:textColor="@color/nt_text"
-                        android:layout_marginBottom="4dp" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="Show current departures as an ongoing lock screen notification."
-                        android:textAppearance="?attr/textAppearanceBodySmall"
-                        android:textSize="14sp"
-                        android:textColor="@color/nt_text"
-                        android:layout_marginBottom="8dp" />
-
-                    <androidx.appcompat.widget.SwitchCompat
-                        android:id="@+id/switch_notification_mode"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Enable notification mode"
-                        android:textColor="@color/nt_text" />
-
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
 
             <LinearLayout
                 android:layout_width="match_parent"

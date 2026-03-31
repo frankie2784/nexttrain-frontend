@@ -1,0 +1,20 @@
+services:
+  next-train-server:
+    build: .
+    container_name: next-train-server
+    restart: unless-stopped
+    ports:
+      - "5050:5050"
+    environment:
+      - PTV_API_KEY=${PTV_API_KEY}
+      - PORT=5050
+    volumes:
+      - gtfs-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5050/health"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  gtfs-data:
