@@ -23,6 +23,7 @@ import logging
 import os
 import sys
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask, jsonify, request
@@ -42,6 +43,7 @@ logger = logging.getLogger(__name__)
 
 API_KEY = os.environ.get("PTV_API_KEY", "")
 PORT = int(os.environ.get("PORT", "5050"))
+LOCAL_TZ = ZoneInfo("Australia/Melbourne")
 
 if not API_KEY:
     logger.warning("PTV_API_KEY not set — GTFS-RT delays will be unavailable")
@@ -49,6 +51,120 @@ if not API_KEY:
 # ── Flask app ──────────────────────────────────────────────────────────────
 
 app = Flask(__name__)
+
+
+@app.route("/debug/rt/raw")
+def debug_rt_raw():
+    """Fetch GTFS-RT feed directly and dump raw fields for HBE trips."""
+    import requests as req
+    from google.transit.gtfs_realtime_pb2 import FeedMessage as FM
+    try:
+        resp = req.get(
+            "https://api.opendata.transport.vic.gov.au/"
+            "opendata/public-transport/gtfs/realtime/v1/metro/trip-updates",
+            headers={"KeyID": API_KEY},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        feed = FM()
+        feed.ParseFromString(resp.content)
+
+        hbe_entities = []
+        all_has_delay = 0
+        all_has_time = 0
+        all_stop_updates = 0
+        for entity in feed.entity:
+            if not entity.HasField("trip_update"):
+                continue
+            tu = entity.trip_update
+            tid = tu.trip.trip_id
+            for stu in tu.stop_time_update:
+                all_stop_updates += 1
+                has_dep_delay = stu.HasField("departure") and stu.departure.delay != 0
+                has_dep_time = stu.HasField("departure") and stu.departure.time != 0
+                has_arr_delay = stu.HasField("arrival") and stu.arrival.delay != 0
+                has_arr_time = stu.HasField("arrival") and stu.arrival.time != 0
+                if has_dep_delay or has_arr_delay:
+                    all_has_delay += 1
+                if has_dep_time or has_arr_time:
+                    all_has_time += 1
+
+            if "HBE" not in tid:
+                continue
+            stops_detail = []
+            for stu in tu.stop_time_update:
+                detail = {"stop_id": stu.stop_id, "stop_sequence": stu.stop_sequence}
+                if stu.HasField("departure"):
+                    detail["dep_delay"] = stu.departure.delay
+                    detail["dep_time"] = stu.departure.time
+                    detail["dep_uncertainty"] = stu.departure.uncertainty
+                if stu.HasField("arrival"):
+                    detail["arr_delay"] = stu.arrival.delay
+                    detail["arr_time"] = stu.arrival.time
+                    detail["arr_uncertainty"] = stu.arrival.uncertainty
+                stops_detail.append(detail)
+            hbe_entities.append({
+                "trip_id": tid,
+                "schedule_relationship": tu.trip.schedule_relationship,
+                "start_date": tu.trip.start_date,
+                "route_id": tu.trip.route_id,
+                "stop_time_updates": stops_detail,
+            })
+
+        return jsonify({
+            "feed_entities": len(feed.entity),
+            "total_stop_time_updates": all_stop_updates,
+            "updates_with_nonzero_delay_field": all_has_delay,
+            "updates_with_nonzero_time_field": all_has_time,
+            "hbe_trip_count": len(hbe_entities),
+            "hbe_trips": hbe_entities[:10],
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/debug/rt/match")
+def debug_rt_match():
+    """Trace RT matching for a given origin + trip."""
+    origin_id = request.args.get("origin_id", "vic:rail:MCD")
+    trip_id = request.args.get("trip_id")
+
+    matching_sids = gtfs_static._matching_stop_ids(origin_id)
+    stops_info = {
+        sid: {
+            "name": gtfs_static.stops.get(sid, {}).get("stop_name"),
+            "parent": gtfs_static.stops.get(sid, {}).get("parent_station"),
+        }
+        for sid in matching_sids
+    }
+
+    # Check if origin_id is itself in stops dict
+    origin_in_stops = origin_id in gtfs_static.stops
+    origin_stop_data = gtfs_static.stops.get(origin_id)
+
+    # If trip_id given, find all RT entries for it
+    rt_entries_for_trip = {}
+    if trip_id:
+        with gtfs_rt._lock:
+            for (tid, sid), delay in gtfs_rt.delays.items():
+                if tid == trip_id:
+                    rt_entries_for_trip[sid] = delay
+
+    # Sample of all stop IDs in stops dict
+    total_stops = len(gtfs_static.stops)
+    sample_stop_ids = list(gtfs_static.stops.keys())[:20]
+
+    return jsonify({
+        "origin_id": origin_id,
+        "origin_in_stops_dict": origin_in_stops,
+        "origin_stop_data": origin_stop_data,
+        "matching_stop_ids": list(matching_sids),
+        "matching_stops_info": stops_info,
+        "total_stops_loaded": total_stops,
+        "sample_stop_ids": sample_stop_ids,
+        "trip_id": trip_id,
+        "rt_entries_for_trip": rt_entries_for_trip,
+    })
 
 
 @app.route("/health")
@@ -66,12 +182,74 @@ def health():
     })
 
 
+@app.route("/debug/rt")
+def debug_rt():
+    """Diagnostic: show RT delay stats, trip ID matching, and sample non-zero delay entries."""
+    import re
+
+    def timetable_period(trip_id):
+        m = re.search(r"--(\d+)-", trip_id)
+        return m.group(1) if m else "?"
+
+    delays = dict(gtfs_rt.delays)
+    non_zero = {k: v for k, v in delays.items() if v and v != 0}
+    top_delayed = sorted(non_zero.items(), key=lambda x: abs(x[1]), reverse=True)[:20]
+
+    rt_trip_ids = {k[0] for k in delays}
+    static_trip_ids = set(gtfs_static.trips.keys())
+    matched = rt_trip_ids & static_trip_ids
+
+    # Period breakdown
+    static_periods: dict[str, int] = {}
+    for t in static_trip_ids:
+        p = timetable_period(t)
+        static_periods[p] = static_periods.get(p, 0) + 1
+    rt_periods: dict[str, int] = {}
+    for t in rt_trip_ids:
+        p = timetable_period(t)
+        rt_periods[p] = rt_periods.get(p, 0) + 1
+
+    return jsonify({
+        "total_rt_entries": len(delays),
+        "non_zero_delay_entries": len(non_zero),
+        "cancelled_trips": len(gtfs_rt.cancelled_trips),
+        "static_trips": len(static_trip_ids),
+        "rt_unique_trips": len(rt_trip_ids),
+        "matched_trips": len(matched),
+        "static_timetable_periods": static_periods,
+        "rt_timetable_periods": rt_periods,
+        "sample_matched_trip_ids": list(matched)[:5],
+        "sample_unmatched_rt_trip_ids": list(rt_trip_ids - static_trip_ids)[:5],
+        "sample_unmatched_static_trip_ids": list(static_trip_ids - rt_trip_ids)[:5],
+        "top_delays": [{"trip_id": k[0], "stop_id": k[1], "delay_s": v} for k, v in top_delayed],
+        "last_fetched": gtfs_rt.last_fetched.isoformat() if gtfs_rt.last_fetched else None,
+    })
+
+
+@app.route("/stations")
+def stations():
+    if gtfs_static.last_updated is None:
+        return jsonify({"error": "GTFS static data not loaded yet"}), 503
+
+    items = gtfs_static.station_catalog()
+    return jsonify({
+        "count": len(items),
+        "stations": items,
+        "timestamp": datetime.now(LOCAL_TZ).isoformat(),
+    })
+
+
 @app.route("/departures")
 def departures():
+    origin_gtfs_id = request.args.get("origin_gtfs_id")
     stop_id = request.args.get("stop_id")
-    if stop_id is None:
-        return jsonify({"error": "stop_id is required"}), 400
+    origin_id = origin_gtfs_id or stop_id
+    if origin_id is None:
+        return jsonify({"error": "origin_gtfs_id or stop_id is required"}), 400
 
+    destination_gtfs_id = request.args.get("destination_gtfs_id")
+    destination_stop_id = request.args.get("destination_stop_id")
+    destination_id = destination_gtfs_id or destination_stop_id
     direction_id_raw = request.args.get("direction_id")
     direction_id = int(direction_id_raw) if direction_id_raw is not None else None
     max_results = int(request.args.get("max_results", "5"))
@@ -79,26 +257,34 @@ def departures():
     if gtfs_static.last_updated is None:
         return jsonify({"error": "GTFS static data not loaded yet"}), 503
 
-    now = datetime.now()
+    now = datetime.now(LOCAL_TZ)
+    # Over-fetch candidates so cancelled services can be dropped while still
+    # returning up to max_results running trains.
+    candidate_limit = min(max(max_results * 4, max_results + 5), 100)
     scheduled = gtfs_static.departures_from_stop(
-        stop_id=stop_id,
+        stop_id=origin_id,
+        destination_stop_id=destination_id,
         direction_id=direction_id,
-        max_results=max_results,
+        max_results=candidate_limit,
         reference_time=now,
     )
 
     results = []
     for dep in scheduled:
         trip_id = dep["trip_id"]
-        # Try matching on any stop_id variant for this trip+stop
-        delay_seconds = gtfs_rt.get_delay(trip_id, stop_id)
+
+        # Hide trips that GTFS-RT explicitly marks as cancelled.
+        if gtfs_rt.is_trip_cancelled(trip_id):
+            continue
+
+        # Prefer the exact GTFS platform stop_id that produced this departure.
+        delay_seconds = gtfs_rt.get_delay(trip_id, dep.get("stop_id", origin_id))
         if delay_seconds is None:
-            # Try child platform stop IDs
-            for sid, srow in gtfs_static.stops.items():
-                if srow.get("parent_station") == str(stop_id):
-                    delay_seconds = gtfs_rt.get_delay(trip_id, sid)
-                    if delay_seconds is not None:
-                        break
+            # Fall back to any resolved stop-id variant for the requested stop.
+            for sid in gtfs_static._matching_stop_ids(origin_id):
+                delay_seconds = gtfs_rt.get_delay(trip_id, sid)
+                if delay_seconds is not None:
+                    break
 
         delay_minutes = round(delay_seconds / 60) if delay_seconds is not None else 0
 
@@ -106,9 +292,10 @@ def departures():
         dep_time = dep["departure_time"]
         display_time = dep_time[:5] if len(dep_time) >= 5 else dep_time
 
-        # Compute estimated time if delayed
+        # Compute expected real-time departure whenever RT data is available.
+        # If RT is missing (None), clients should fall back to scheduled_time.
         estimated_time = None
-        if delay_seconds and delay_seconds != 0:
+        if delay_seconds is not None:
             try:
                 h, m, s = (int(x) for x in dep_time.split(":"))
                 total_s = h * 3600 + m * 60 + s + delay_seconds
@@ -137,11 +324,19 @@ def departures():
             "delay_seconds": delay_seconds,
             "minutes_until": minutes_until,
             "trip_headsign": dep["trip_headsign"],
-            "platform": None,  # GTFS-RT doesn't reliably provide this
+            "platform": dep.get("platform"),
         })
 
+        if len(results) >= max_results:
+            break
+
     return jsonify({
+        "origin_id": origin_id,
+        "origin_gtfs_id": origin_gtfs_id,
         "stop_id": stop_id,
+        "destination_id": destination_id,
+        "destination_gtfs_id": destination_gtfs_id,
+        "destination_stop_id": destination_stop_id,
         "departures": results,
         "timestamp": now.isoformat(),
     })
