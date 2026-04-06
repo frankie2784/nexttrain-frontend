@@ -22,7 +22,7 @@ Set environment variables (or create a .env file next to this script):
 import logging
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -53,189 +53,6 @@ if not API_KEY:
 app = Flask(__name__)
 
 
-@app.route("/debug/rt/compare")
-def debug_rt_compare():
-    """Compare RT absolute departure times vs static scheduled times for HBE trips."""
-    import requests as req
-    from google.transit.gtfs_realtime_pb2 import FeedMessage as FM
-    try:
-        resp = req.get(
-            "https://api.opendata.transport.vic.gov.au/"
-            "opendata/public-transport/gtfs/realtime/v1/metro/trip-updates",
-            headers={"KeyID": API_KEY},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        feed = FM()
-        feed.ParseFromString(resp.content)
-
-        comparisons = []
-        for entity in feed.entity:
-            if not entity.HasField("trip_update"):
-                continue
-            tu = entity.trip_update
-            tid = tu.trip.trip_id
-            if "HBE" not in tid:
-                continue
-            # Get static stop_times for this trip
-            static_times = gtfs_static.stop_times_by_trip.get(tid, [])
-            static_by_stop = {str(st["stop_id"]): st for st in static_times}
-
-            for stu in tu.stop_time_update:
-                sid = stu.stop_id
-                static_st = static_by_stop.get(sid)
-                if not static_st:
-                    continue
-                sched_dep = static_st.get("departure_time", "")
-                rt_dep_time = stu.departure.time if stu.HasField("departure") else 0
-                rt_dep_delay = stu.departure.delay if stu.HasField("departure") else None
-
-                if rt_dep_time and sched_dep:
-                    # Convert scheduled HH:MM:SS to unix timestamp for today
-                    rt_dt = datetime.fromtimestamp(rt_dep_time, LOCAL_TZ)
-                    try:
-                        h, m, s = (int(x) for x in sched_dep.split(":"))
-                        sched_dt = rt_dt.replace(hour=h % 24, minute=m, second=s)
-                        diff_seconds = int((rt_dt - sched_dt).total_seconds())
-                    except Exception:
-                        diff_seconds = None
-
-                    comparisons.append({
-                        "trip_id": tid,
-                        "stop_id": sid,
-                        "stop_name": gtfs_static.stops.get(sid, {}).get("stop_name", "?"),
-                        "scheduled": sched_dep,
-                        "rt_absolute": rt_dt.strftime("%H:%M:%S"),
-                        "rt_delay_field": rt_dep_delay,
-                        "computed_diff_seconds": diff_seconds,
-                    })
-
-        # Sort by abs diff
-        comparisons.sort(key=lambda x: abs(x.get("computed_diff_seconds") or 0), reverse=True)
-
-        return jsonify({
-            "total_comparisons": len(comparisons),
-            "with_nonzero_diff": sum(1 for c in comparisons if c.get("computed_diff_seconds", 0) != 0),
-            "comparisons": comparisons[:50],
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/debug/rt/raw")
-def debug_rt_raw():
-    """Fetch GTFS-RT feed directly and dump raw fields for HBE trips."""
-    import requests as req
-    from google.transit.gtfs_realtime_pb2 import FeedMessage as FM
-    try:
-        resp = req.get(
-            "https://api.opendata.transport.vic.gov.au/"
-            "opendata/public-transport/gtfs/realtime/v1/metro/trip-updates",
-            headers={"KeyID": API_KEY},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        feed = FM()
-        feed.ParseFromString(resp.content)
-
-        hbe_entities = []
-        all_has_delay = 0
-        all_has_time = 0
-        all_stop_updates = 0
-        for entity in feed.entity:
-            if not entity.HasField("trip_update"):
-                continue
-            tu = entity.trip_update
-            tid = tu.trip.trip_id
-            for stu in tu.stop_time_update:
-                all_stop_updates += 1
-                has_dep_delay = stu.HasField("departure") and stu.departure.delay != 0
-                has_dep_time = stu.HasField("departure") and stu.departure.time != 0
-                has_arr_delay = stu.HasField("arrival") and stu.arrival.delay != 0
-                has_arr_time = stu.HasField("arrival") and stu.arrival.time != 0
-                if has_dep_delay or has_arr_delay:
-                    all_has_delay += 1
-                if has_dep_time or has_arr_time:
-                    all_has_time += 1
-
-            if "HBE" not in tid:
-                continue
-            stops_detail = []
-            for stu in tu.stop_time_update:
-                detail = {"stop_id": stu.stop_id, "stop_sequence": stu.stop_sequence}
-                if stu.HasField("departure"):
-                    detail["dep_delay"] = stu.departure.delay
-                    detail["dep_time"] = stu.departure.time
-                    detail["dep_uncertainty"] = stu.departure.uncertainty
-                if stu.HasField("arrival"):
-                    detail["arr_delay"] = stu.arrival.delay
-                    detail["arr_time"] = stu.arrival.time
-                    detail["arr_uncertainty"] = stu.arrival.uncertainty
-                stops_detail.append(detail)
-            hbe_entities.append({
-                "trip_id": tid,
-                "schedule_relationship": tu.trip.schedule_relationship,
-                "start_date": tu.trip.start_date,
-                "route_id": tu.trip.route_id,
-                "stop_time_updates": stops_detail,
-            })
-
-        return jsonify({
-            "feed_entities": len(feed.entity),
-            "total_stop_time_updates": all_stop_updates,
-            "updates_with_nonzero_delay_field": all_has_delay,
-            "updates_with_nonzero_time_field": all_has_time,
-            "hbe_trip_count": len(hbe_entities),
-            "hbe_trips": hbe_entities[:10],
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/debug/rt/match")
-def debug_rt_match():
-    """Trace RT matching for a given origin + trip."""
-    origin_id = request.args.get("origin_id", "vic:rail:MCD")
-    trip_id = request.args.get("trip_id")
-
-    matching_sids = gtfs_static._matching_stop_ids(origin_id)
-    stops_info = {
-        sid: {
-            "name": gtfs_static.stops.get(sid, {}).get("stop_name"),
-            "parent": gtfs_static.stops.get(sid, {}).get("parent_station"),
-        }
-        for sid in matching_sids
-    }
-
-    # Check if origin_id is itself in stops dict
-    origin_in_stops = origin_id in gtfs_static.stops
-    origin_stop_data = gtfs_static.stops.get(origin_id)
-
-    # If trip_id given, find all RT entries for it
-    rt_entries_for_trip = {}
-    if trip_id:
-        with gtfs_rt._lock:
-            for (tid, sid), delay in gtfs_rt.delays.items():
-                if tid == trip_id:
-                    rt_entries_for_trip[sid] = delay
-
-    # Sample of all stop IDs in stops dict
-    total_stops = len(gtfs_static.stops)
-    sample_stop_ids = list(gtfs_static.stops.keys())[:20]
-
-    return jsonify({
-        "origin_id": origin_id,
-        "origin_in_stops_dict": origin_in_stops,
-        "origin_stop_data": origin_stop_data,
-        "matching_stop_ids": list(matching_sids),
-        "matching_stops_info": stops_info,
-        "total_stops_loaded": total_stops,
-        "sample_stop_ids": sample_stop_ids,
-        "trip_id": trip_id,
-        "rt_entries_for_trip": rt_entries_for_trip,
-    })
-
-
 @app.route("/health")
 def health():
     return jsonify({
@@ -251,50 +68,6 @@ def health():
     })
 
 
-@app.route("/debug/rt")
-def debug_rt():
-    """Diagnostic: show RT delay stats, trip ID matching, and sample non-zero delay entries."""
-    import re
-
-    def timetable_period(trip_id):
-        m = re.search(r"--(\d+)-", trip_id)
-        return m.group(1) if m else "?"
-
-    delays = dict(gtfs_rt.delays)
-    non_zero = {k: v for k, v in delays.items() if v and v != 0}
-    top_delayed = sorted(non_zero.items(), key=lambda x: abs(x[1]), reverse=True)[:20]
-
-    rt_trip_ids = {k[0] for k in delays}
-    static_trip_ids = set(gtfs_static.trips.keys())
-    matched = rt_trip_ids & static_trip_ids
-
-    # Period breakdown
-    static_periods: dict[str, int] = {}
-    for t in static_trip_ids:
-        p = timetable_period(t)
-        static_periods[p] = static_periods.get(p, 0) + 1
-    rt_periods: dict[str, int] = {}
-    for t in rt_trip_ids:
-        p = timetable_period(t)
-        rt_periods[p] = rt_periods.get(p, 0) + 1
-
-    return jsonify({
-        "total_rt_entries": len(delays),
-        "non_zero_delay_entries": len(non_zero),
-        "cancelled_trips": len(gtfs_rt.cancelled_trips),
-        "static_trips": len(static_trip_ids),
-        "rt_unique_trips": len(rt_trip_ids),
-        "matched_trips": len(matched),
-        "static_timetable_periods": static_periods,
-        "rt_timetable_periods": rt_periods,
-        "sample_matched_trip_ids": list(matched)[:5],
-        "sample_unmatched_rt_trip_ids": list(rt_trip_ids - static_trip_ids)[:5],
-        "sample_unmatched_static_trip_ids": list(static_trip_ids - rt_trip_ids)[:5],
-        "top_delays": [{"trip_id": k[0], "stop_id": k[1], "delay_s": v} for k, v in top_delayed],
-        "last_fetched": gtfs_rt.last_fetched.isoformat() if gtfs_rt.last_fetched else None,
-    })
-
-
 @app.route("/stations")
 def stations():
     if gtfs_static.last_updated is None:
@@ -304,6 +77,25 @@ def stations():
     return jsonify({
         "count": len(items),
         "stations": items,
+        "timestamp": datetime.now(LOCAL_TZ).isoformat(),
+    })
+
+
+@app.route("/reachable_destinations")
+def reachable_destinations():
+    """Return stations reachable from the given origin on the same line(s)."""
+    stop_id = request.args.get("stop_id")
+    if not stop_id:
+        return jsonify({"error": "stop_id is required"}), 400
+
+    if gtfs_static.last_updated is None:
+        return jsonify({"error": "GTFS static data not loaded yet"}), 503
+
+    stations = gtfs_static.reachable_destinations(stop_id)
+    return jsonify({
+        "origin_stop_id": stop_id,
+        "stations": stations,
+        "count": len(stations),
         "timestamp": datetime.now(LOCAL_TZ).isoformat(),
     })
 
@@ -394,12 +186,25 @@ def departures():
             except Exception:
                 pass
 
-        # Minutes until departure
+        # Minutes until departure, including cross-midnight services.
         try:
-            h, m, s = (int(x) for x in dep_time.split(":"))
-            dep_abs_seconds = h * 3600 + m * 60 + s + (delay_seconds or 0)
-            now_seconds = now.hour * 3600 + now.minute * 60 + now.second
-            minutes_until = max(0, (dep_abs_seconds - now_seconds) // 60)
+            base_ts = dep.get("departure_timestamp")
+            if base_ts is not None:
+                dep_dt = datetime.fromtimestamp(base_ts, LOCAL_TZ)
+            else:
+                h, m, s = (int(x) for x in dep_time.split(":"))
+                service_date_raw = dep.get("service_date")
+                service_day = (
+                    datetime.fromisoformat(service_date_raw).date()
+                    if service_date_raw else now.date()
+                )
+                dep_dt = datetime.combine(service_day, datetime.min.time(), tzinfo=LOCAL_TZ)
+                dep_dt = dep_dt + timedelta(hours=h, minutes=m, seconds=s)
+
+            if delay_seconds is not None:
+                dep_dt = dep_dt + timedelta(seconds=delay_seconds)
+
+            minutes_until = max(0, int((dep_dt - now).total_seconds() // 60))
         except Exception:
             minutes_until = 0
 
@@ -472,14 +277,14 @@ def _init_app():
             logger.exception("Initial GTFS-RT fetch failed")
 
     scheduler = BackgroundScheduler()
-    scheduler.add_job(refresh_realtime, "interval", seconds=30, id="gtfs_rt")
+    scheduler.add_job(refresh_realtime, "interval", seconds=15, id="gtfs_rt")
     scheduler.add_job(refresh_static, "interval", days=7, id="gtfs_static")
     # Retry static load every 5 minutes if it hasn't loaded yet
     scheduler.add_job(
         _retry_static_if_needed, "interval", minutes=5, id="gtfs_static_retry"
     )
     scheduler.start()
-    logger.info("Scheduler started: RT every 30s, static every 7d")
+    logger.info("Scheduler started: RT every 15s, static every 7d")
 
 
 def _retry_static_if_needed():

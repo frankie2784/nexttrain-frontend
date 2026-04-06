@@ -6,6 +6,12 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.Typeface
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.RelativeSizeSpan
+import android.text.style.StyleSpan
+import android.text.style.StrikethroughSpan
 import android.util.Log
 import android.view.View
 import android.widget.RemoteViews
@@ -93,8 +99,20 @@ class TrainWidgetProvider : AppWidgetProvider() {
             val departures = client.getDeparturesFromServer(
                 serverUrl = prefs.serverUrl,
                 stopId = activePair.originStopId,
+                destinationStopId = activePair.destinationStopId,
                 directionId = activePair.directionId
             )
+
+            if (departures.isEmpty() && !client.isServerReachable(prefs.serverUrl)) {
+                showErrorState(
+                    context = context,
+                    manager = manager,
+                    widgetId = widgetId,
+                    message = "Cannot reach server. Check Wi-Fi and server URL"
+                )
+                return@launch
+            }
+
             renderDepartures(
                 context = context,
                 manager = manager,
@@ -104,49 +122,6 @@ class TrainWidgetProvider : AppWidgetProvider() {
                 isDemoData = false
             )
         }
-    }
-
-    // ── Fetch & filter ────────────────────────────────────────────────────
-
-    /**
-     * Fetches departures from the PTV API and filters to services that also
-     * stop at the destination station. Returns up to 3 upcoming departures.
-     */
-    private suspend fun fetchAndFilter(client: PtvApiClient, pair: OdPair): List<Departure> {
-        val raw = client.getDepartures(pair.originStopId, pair.directionId)
-
-        val now = Instant.now()
-        return raw
-            .filter { dep ->
-                // Only include services with a departure time in the future
-                val depTime = dep.estimated_departure_utc ?: dep.scheduled_departure_utc
-                if (depTime != null) Instant.parse(depTime).isAfter(now) else false
-            }
-            .sortedBy { dep ->
-                val t = dep.estimated_departure_utc ?: dep.scheduled_departure_utc
-                Instant.parse(t).epochSecond
-            }
-            .take(3)
-            .map { dep ->
-                val schedLocal = PtvApiClient.parseToMelbourneTime(dep.scheduled_departure_utc)
-                val estLocal = PtvApiClient.parseToMelbourneTime(dep.estimated_departure_utc)
-                val delay = PtvApiClient.delayMinutes(
-                    dep.scheduled_departure_utc,
-                    dep.estimated_departure_utc
-                )
-                val depInstant = Instant.parse(
-                    dep.estimated_departure_utc ?: dep.scheduled_departure_utc!!
-                )
-                val minutesUntil = (depInstant.epochSecond - now.epochSecond) / 60
-
-                Departure(
-                    scheduledTime = schedLocal ?: "??:??",
-                    estimatedTime = if (delay != 0) estLocal else null,
-                    delayMinutes = delay,
-                    platformNumber = dep.platform_number,
-                    minutesUntilDeparture = minutesUntil
-                )
-            }
     }
 
     // ── RemoteViews builders ──────────────────────────────────────────────
@@ -160,6 +135,11 @@ class TrainWidgetProvider : AppWidgetProvider() {
         val views = RemoteViews(context.packageName, R.layout.widget_layout)
         views.setTextViewText(R.id.tv_route_label, "${pair.originName} → ${pair.destinationName}")
         views.setTextViewText(R.id.tv_last_updated, "Updating…")
+        views.setTextViewText(R.id.tv_primary_minutes, "--")
+        views.setTextViewText(R.id.tv_primary_time, "Updating")
+        views.setViewVisibility(R.id.tv_secondary_1, View.GONE)
+        views.setViewVisibility(R.id.tv_secondary_separator, View.GONE)
+        views.setViewVisibility(R.id.tv_secondary_2, View.GONE)
         views.setViewVisibility(R.id.tv_no_trains, View.GONE)
         manager.updateAppWidget(widgetId, views)
     }
@@ -173,11 +153,13 @@ class TrainWidgetProvider : AppWidgetProvider() {
         val views = RemoteViews(context.packageName, R.layout.widget_layout)
         views.setTextViewText(R.id.tv_route_label, "Next Train")
         views.setTextViewText(R.id.tv_last_updated, "")
+        views.setTextViewText(R.id.tv_primary_minutes, "--")
+        views.setTextViewText(R.id.tv_primary_time, "--:--")
+        views.setViewVisibility(R.id.tv_secondary_1, View.GONE)
+        views.setViewVisibility(R.id.tv_secondary_separator, View.GONE)
+        views.setViewVisibility(R.id.tv_secondary_2, View.GONE)
         views.setViewVisibility(R.id.tv_no_trains, View.VISIBLE)
         views.setTextViewText(R.id.tv_no_trains, message)
-        hideRow(views, R.id.row_departure_1)
-        hideRow(views, R.id.row_departure_2)
-        hideRow(views, R.id.row_departure_3)
 
         // Tap → open config
         val configIntent = Intent(context, ConfigActivity::class.java)
@@ -206,14 +188,16 @@ class TrainWidgetProvider : AppWidgetProvider() {
             nextPair?.let { "${it.originName} → ${it.destinationName}" } ?: "Next Train"
         )
         views.setTextViewText(R.id.tv_last_updated, "")
+        views.setTextViewText(R.id.tv_primary_minutes, "--")
+        views.setTextViewText(R.id.tv_primary_time, "--:--")
+        views.setViewVisibility(R.id.tv_secondary_1, View.GONE)
+        views.setViewVisibility(R.id.tv_secondary_separator, View.GONE)
+        views.setViewVisibility(R.id.tv_secondary_2, View.GONE)
         views.setViewVisibility(R.id.tv_no_trains, View.VISIBLE)
         val msg = nextPair?.let {
             "Active ${it.activeFrom}–${it.activeTo}"
         } ?: "No routes configured"
         views.setTextViewText(R.id.tv_no_trains, msg)
-        hideRow(views, R.id.row_departure_1)
-        hideRow(views, R.id.row_departure_2)
-        hideRow(views, R.id.row_departure_3)
         manager.updateAppWidget(widgetId, views)
 
         if (prefs.notificationModeEnabled) {
@@ -237,28 +221,46 @@ class TrainWidgetProvider : AppWidgetProvider() {
     ) {
         val views = RemoteViews(context.packageName, R.layout.widget_layout)
         views.setTextViewText(R.id.tv_route_label, "${pair.originName} → ${pair.destinationName}")
-
         val now = DateTimeFormatter.ofPattern("HH:mm")
             .withZone(ZoneId.of("Australia/Melbourne"))
             .format(Instant.now())
         views.setTextViewText(R.id.tv_last_updated, if (isDemoData) "DEMO ↻ $now" else "↻ $now")
 
-        val rowIds = listOf(R.id.row_departure_1, R.id.row_departure_2, R.id.row_departure_3)
-
         if (departures.isEmpty()) {
+            views.setTextViewText(R.id.tv_primary_minutes, "--")
+            views.setTextViewText(R.id.tv_primary_time, "--:--")
+            views.setViewVisibility(R.id.tv_secondary_1, View.GONE)
+            views.setViewVisibility(R.id.tv_secondary_separator, View.GONE)
+            views.setViewVisibility(R.id.tv_secondary_2, View.GONE)
             views.setViewVisibility(R.id.tv_no_trains, View.VISIBLE)
             views.setTextViewText(R.id.tv_no_trains, "No trains found")
-            rowIds.forEach { hideRow(views, it) }
         } else {
-            views.setViewVisibility(R.id.tv_no_trains, View.GONE)
-            rowIds.forEachIndexed { index, rowId ->
-                val dep = departures.getOrNull(index)
-                if (dep != null) {
-                    bindDepartureRow(context, views, rowId, dep)
-                } else {
-                    hideRow(views, rowId)
-                }
+            val primary = departures[0]
+            views.setTextViewText(R.id.tv_primary_minutes, departureMinutesText(primary))
+            views.setTextViewText(R.id.tv_primary_time, "(${primary.expectedTime})")
+
+            val second = departures.getOrNull(1)
+            if (second != null) {
+                views.setTextViewText(R.id.tv_secondary_1, compactDepartureText(second))
+                views.setViewVisibility(R.id.tv_secondary_1, View.VISIBLE)
+            } else {
+                views.setViewVisibility(R.id.tv_secondary_1, View.GONE)
             }
+
+            val third = departures.getOrNull(2)
+            if (third != null) {
+                views.setTextViewText(R.id.tv_secondary_2, compactDepartureText(third))
+                views.setViewVisibility(R.id.tv_secondary_2, View.VISIBLE)
+            } else {
+                views.setViewVisibility(R.id.tv_secondary_2, View.GONE)
+            }
+
+            views.setViewVisibility(
+                R.id.tv_secondary_separator,
+                if (second != null && third != null) View.VISIBLE else View.GONE
+            )
+
+            views.setViewVisibility(R.id.tv_no_trains, View.GONE)
         }
 
         // Tap to refresh
@@ -280,48 +282,50 @@ class TrainWidgetProvider : AppWidgetProvider() {
         }
     }
 
-    private fun bindDepartureRow(context: Context, parentViews: RemoteViews, containerId: Int, dep: Departure) {
-        val row = RemoteViews(context.packageName, R.layout.widget_departure_row)
-        row.setTextViewText(R.id.tv_departure_time, dep.displayTime)
+    private fun formatDepartureTime(dep: Departure): CharSequence {
+        if (!dep.hasRealtimeTimeChange) return dep.expectedTime
 
-        val minsText = when {
-            dep.minutesUntilDeparture <= 0 -> "Now"
-            dep.minutesUntilDeparture == 1L -> "in 1 min"
-            else -> "in ${dep.minutesUntilDeparture} min"
-        }
-        row.setTextViewText(R.id.tv_minutes_away, minsText)
-
-        val platform = dep.platformNumber?.let { "Plat $it" } ?: ""
-        row.setTextViewText(R.id.tv_platform, platform)
-
-        when {
-            dep.isDelayed -> {
-                row.setViewVisibility(R.id.tv_delay, View.VISIBLE)
-                row.setTextViewText(R.id.tv_delay, "+${dep.delayMinutes}m")
-                row.setInt(R.id.tv_delay, "setBackgroundResource", R.drawable.delay_badge_bg)
-            }
-            dep.isEarly -> {
-                row.setViewVisibility(R.id.tv_delay, View.VISIBLE)
-                row.setTextViewText(R.id.tv_delay, "${dep.delayMinutes}m")
-                row.setInt(R.id.tv_delay, "setBackgroundResource", R.drawable.early_badge_bg)
-            }
-            else -> {
-                row.setViewVisibility(R.id.tv_delay, View.GONE)
-            }
-        }
-
-        parentViews.removeAllViews(containerId)
-        parentViews.addView(containerId, row)
+        val expected = dep.expectedTime
+        val scheduledBracket = " (${dep.scheduledTime})"
+        val out = SpannableStringBuilder(expected).append(scheduledBracket)
+        val start = expected.length + 2 // skip leading " ("
+        val end = start + dep.scheduledTime.length
+        out.setSpan(StrikethroughSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        return out
     }
 
-    private fun hideRow(views: RemoteViews, containerId: Int) {
-        views.removeAllViews(containerId)
+    private fun departureMinutesText(dep: Departure): String = when {
+        dep.minutesUntilDeparture <= 0 -> "Now"
+        dep.minutesUntilDeparture == 1L -> "1m"
+        dep.minutesUntilDeparture > 120 -> "${dep.minutesUntilDeparture / 60}h"
+        else -> "${dep.minutesUntilDeparture}m"
+    }
+
+    private fun compactDepartureText(dep: Departure): CharSequence {
+        val out = SpannableStringBuilder()
+        val mins = departureMinutesText(dep)
+        out.append(mins)
+        out.setSpan(
+            StyleSpan(Typeface.BOLD),
+            0,
+            out.length,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        val timeStart = out.length
+        out.append(" (${dep.expectedTime})")
+        out.setSpan(
+            RelativeSizeSpan(0.88f),
+            timeStart,
+            out.length,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+        )
+        return out
     }
 
     private fun demoOdPair(): OdPair = OdPair(
         id = "demo-pair",
         label = "Demo route",
-        originStopId = 1066,
+        originStopId = 1065,
         originName = "Fairfield",
         destinationStopId = 1104,
         destinationName = "Jolimont",

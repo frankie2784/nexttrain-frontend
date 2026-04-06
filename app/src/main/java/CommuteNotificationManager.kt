@@ -49,12 +49,12 @@ object CommuteNotificationManager {
         } else {
             departures.take(3).joinToString(" • ") { dep ->
                 val mins = when {
-                    dep.minutesUntilDeparture <= 0 -> "now"
+                    dep.minutesUntilDeparture <= 0 -> "Now"
                     dep.minutesUntilDeparture == 1L -> "1m"
+                    dep.minutesUntilDeparture > 120 -> "${dep.minutesUntilDeparture / 60}h"
                     else -> "${dep.minutesUntilDeparture}m"
                 }
-                val platform = dep.platformNumber?.let { " P$it" } ?: ""
-                "${dep.displayTime} ($mins$platform)"
+                "$mins (${dep.expectedTime})"
             }
         }
 
@@ -62,13 +62,14 @@ object CommuteNotificationManager {
             listOf("No upcoming trains")
         } else {
             departures.take(3).map { dep ->
-                val status = when {
-                    dep.delayMinutes > 1 -> " +${dep.delayMinutes}m"
-                    dep.delayMinutes < -1 -> " ${dep.delayMinutes}m"
-                    else -> ""
+                val mins = when {
+                    dep.minutesUntilDeparture <= 0 -> "Now"
+                    dep.minutesUntilDeparture == 1L -> "1 min"
+                    dep.minutesUntilDeparture > 120 -> "${dep.minutesUntilDeparture / 60} hrs"
+                    else -> "${dep.minutesUntilDeparture} min"
                 }
-                val platform = dep.platformNumber?.let { " platform $it" } ?: ""
-                "${dep.displayTime}${status}${platform}"
+                val delaySuffix = if (dep.delayMinutes > 0) " +${dep.delayMinutes}" else ""
+                "$mins$delaySuffix (${dep.expectedTime})"
             }
         }
 

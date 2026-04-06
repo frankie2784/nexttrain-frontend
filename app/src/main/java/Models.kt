@@ -1,6 +1,7 @@
 package com.trainwidget.data
 
 import java.time.LocalTime
+import java.time.DayOfWeek
 
 // ── PTV API response models ────────────────────────────────────────────────
 
@@ -44,7 +45,9 @@ data class Departure(
 ) {
     val isDelayed: Boolean get() = delayMinutes > 1
     val isEarly: Boolean get() = delayMinutes < -1
-    val displayTime: String get() = estimatedTime ?: scheduledTime
+    val expectedTime: String get() = estimatedTime ?: scheduledTime
+    val hasRealtimeTimeChange: Boolean get() = expectedTime != scheduledTime
+    val displayTime: String get() = expectedTime
 }
 
 // ── Melbourne Metro stations ───────────────────────────────────────────────
@@ -72,7 +75,7 @@ object MelbourneStations {
         Station("Clifton Hill", 1041),
         Station("Westgarth", 1217),
         Station("Dennis", 1052),
-        Station("Fairfield", 1066),
+        Station("Fairfield", 1065),
         Station("Alphington", 1003),
         Station("Darebin", 1049),
         Station("Ivanhoe", 1097),
@@ -86,7 +89,7 @@ object MelbourneStations {
         Station("Eltham", 1060),
         Station("Diamond Creek", 1053),
         Station("Wattle Glen", 1216),
-        Station("Hurstbridge", 1093),
+        Station("Hurstbridge", 1100),
 
         // Mernda
         Station("Epping", 1063),
@@ -255,10 +258,13 @@ data class OdPair(
     val destinationName: String,
     val activeFrom: LocalTime,  // start of active window (inclusive)
     val activeTo: LocalTime,    // end of active window (inclusive)
+    val activeDays: Set<Int> = (1..7).toSet(), // java.time.DayOfWeek values (1=Mon..7=Sun)
     val directionId: Int = -1   // -1 = auto-detect from destination
 ) {
     fun isActiveNow(): Boolean {
+        val today = DayOfWeek.from(java.time.LocalDate.now()).value
+        if (today !in activeDays) return false
         val now = LocalTime.now()
-        return now.isAfter(activeFrom) && now.isBefore(activeTo)
+        return !now.isBefore(activeFrom) && !now.isAfter(activeTo)
     }
 }

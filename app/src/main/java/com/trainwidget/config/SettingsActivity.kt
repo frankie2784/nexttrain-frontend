@@ -33,12 +33,17 @@ class SettingsActivity : AppCompatActivity() {
         etServerUrl.setText(prefs.serverUrl)
 
         btnSave.setOnClickListener {
-            val url = etServerUrl.text?.toString()?.trim() ?: ""
+            var url = etServerUrl.text?.toString()?.trim() ?: ""
             if (url.isBlank()) {
                 Snackbar.make(btnSave, "Server URL is required", Snackbar.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
+            if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                url = "http://$url"
+            }
+            url = url.trimEnd('/')
             prefs.serverUrl = url
+            etServerUrl.setText(url)
             Snackbar.make(btnSave, "Server URL saved", Snackbar.LENGTH_SHORT).show()
         }
     }

@@ -87,10 +87,9 @@ AlarmScheduler
               └── broadcasts ACTION_REFRESH
                     └── TrainWidgetProvider.onReceive()
                           └── checks which OdPair is active right now
-                                └── PtvApiClient.getDepartures(stopId)
-                                      └── HMAC-signs the URL
-                                      └── calls PTV API v3
-                                      └── filters future departures
+                                └── PtvApiClient.getDeparturesFromServer()
+                                      └── calls RPi4 GTFS server
+                                      └── server merges static + RT data
                                       └── renders RemoteViews with top 3
 ```
 
@@ -153,5 +152,5 @@ Both endpoints require the same HMAC-SHA1 signing — you can use the
 | `INTERNET` | PTV API calls |
 | `RECEIVE_BOOT_COMPLETED` | Reschedule alarms after reboot |
 | `SCHEDULE_EXACT_ALARM` / `USE_EXACT_ALARM` | Per-minute updates |
-| `FOREGROUND_SERVICE` | Reserved for future background service use |
+
 | `WAKE_LOCK` | Keep CPU awake during alarm-triggered fetches |

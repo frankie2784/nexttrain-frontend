@@ -55,7 +55,11 @@ class WidgetPrefs(context: Context) {
         return try {
             val type = object : TypeToken<List<OdPairDto>>() {}.type
             val dtos: List<OdPairDto> = gson.fromJson(json, type)
-            dtos.map { it.toOdPair() }
+            val pairs = dtos.map { it.toOdPair() }.map { migrateLegacyStopIds(it) }
+            if (pairs != dtos.map { it.toOdPair() }) {
+                saveOdPairs(pairs)
+            }
+            pairs
         } catch (e: Exception) {
             emptyList()
         }
@@ -90,6 +94,7 @@ class WidgetPrefs(context: Context) {
         val activeFromMinute: Int,
         val activeToHour: Int,
         val activeToMinute: Int,
+        val activeDays: List<Int>? = null,
         val directionId: Int
     ) {
         fun toOdPair() = OdPair(
@@ -101,6 +106,7 @@ class WidgetPrefs(context: Context) {
             destinationName = destinationName,
             activeFrom = LocalTime.of(activeFromHour, activeFromMinute),
             activeTo = LocalTime.of(activeToHour, activeToMinute),
+            activeDays = activeDays?.toSet() ?: (1..7).toSet(),
             directionId = directionId
         )
 
@@ -116,6 +122,7 @@ class WidgetPrefs(context: Context) {
                 activeFromMinute = p.activeFrom.minute,
                 activeToHour = p.activeTo.hour,
                 activeToMinute = p.activeTo.minute,
+                activeDays = p.activeDays.sorted(),
                 directionId = p.directionId
             )
         }
@@ -124,5 +131,48 @@ class WidgetPrefs(context: Context) {
     companion object {
         const val DEFAULT_SERVER_URL = "http://frankipi:5050"
         fun newId(): String = UUID.randomUUID().toString()
+
+        private const val LEGACY_FAIRFIELD_STOP_ID = 1066
+        private const val FAIRFIELD_STOP_ID = 1065
+        private const val LEGACY_HURSTBRIDGE_STOP_ID = 1093
+        private const val HURSTBRIDGE_STOP_ID = 1100
+    }
+
+    private fun migrateLegacyStopIds(pair: OdPair): OdPair {
+        val correctedOriginStopId =
+            if (pair.originName == "Fairfield" && pair.originStopId == LEGACY_FAIRFIELD_STOP_ID) {
+                FAIRFIELD_STOP_ID
+            } else if (
+                pair.originName == "Hurstbridge" &&
+                pair.originStopId == LEGACY_HURSTBRIDGE_STOP_ID
+            ) {
+                HURSTBRIDGE_STOP_ID
+            } else {
+                pair.originStopId
+            }
+
+        val correctedDestinationStopId =
+            if (pair.destinationName == "Fairfield" && pair.destinationStopId == LEGACY_FAIRFIELD_STOP_ID) {
+                FAIRFIELD_STOP_ID
+            } else if (
+                pair.destinationName == "Hurstbridge" &&
+                pair.destinationStopId == LEGACY_HURSTBRIDGE_STOP_ID
+            ) {
+                HURSTBRIDGE_STOP_ID
+            } else {
+                pair.destinationStopId
+            }
+
+        return if (
+            correctedOriginStopId == pair.originStopId &&
+            correctedDestinationStopId == pair.destinationStopId
+        ) {
+            pair
+        } else {
+            pair.copy(
+                originStopId = correctedOriginStopId,
+                destinationStopId = correctedDestinationStopId,
+            )
+        }
     }
 }

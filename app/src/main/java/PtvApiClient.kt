@@ -2,7 +2,6 @@ package com.trainwidget.api
 
 import android.util.Log
 import com.google.gson.Gson
-import com.google.gson.annotations.SerializedName
 import com.trainwidget.data.Departure
 import com.trainwidget.data.PtvDeparture
 import com.trainwidget.data.PtvDeparturesResponse
@@ -15,9 +14,6 @@ import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
 import retrofit2.http.Url
 import java.net.URL
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
@@ -118,30 +114,6 @@ class PtvApiClient(
         }
     }
 
-    /**
-     * Lookup the direction IDs for a given route, so we can pick the one heading
-     * toward [destinationStopId]. Returns a map of directionId → directionName.
-     */
-    suspend fun getDirectionsForRoute(routeId: Int): Map<Int, String> =
-        withContext(Dispatchers.IO) {
-            try {
-                val path = "/v3/directions/route/$routeId"
-                val signedUrl = buildSignedUrl(path)
-                // We reuse the generic call; parse manually
-                // (A dedicated retrofit method could be added for production use)
-                val url = URL(signedUrl)
-                val json = url.readText()
-                // Simple parse: extract direction_id → direction_name
-                val regex = Regex(""""direction_id"\s*:\s*(\d+).*?"direction_name"\s*:\s*"([^"]+)"""")
-                regex.findAll(json).associate { m ->
-                    m.groupValues[1].toInt() to m.groupValues[2]
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to fetch directions for route $routeId", e)
-                emptyMap()
-            }
-        }
-
     // ── Private helpers ───────────────────────────────────────────────────
 
     private fun buildPath(stopId: Int, directionId: Int, maxResults: Int): String {
@@ -180,11 +152,13 @@ class PtvApiClient(
     suspend fun getDeparturesFromServer(
         serverUrl: String,
         stopId: Int,
+        destinationStopId: Int? = null,
         directionId: Int = -1,
         maxResults: Int = 5
     ): List<Departure> = withContext(Dispatchers.IO) {
         try {
             val sb = StringBuilder("$serverUrl/departures?stop_id=$stopId")
+            if (destinationStopId != null) sb.append("&destination_stop_id=$destinationStopId")
             sb.append("&max_results=$maxResults")
             if (directionId >= 0) sb.append("&direction_id=$directionId")
             val url = URL(sb.toString())
@@ -205,35 +179,12 @@ class PtvApiClient(
         }
     }
 
-    companion object {
-        /**
-         * Parses an ISO-8601 UTC departure string (e.g. "2024-07-15T06:14:00Z")
-         * into a local-time "HH:mm" string in Melbourne time.
-         */
-        fun parseToMelbourneTime(isoUtc: String?): String? {
-            if (isoUtc == null) return null
-            return try {
-                val instant = Instant.parse(isoUtc)
-                val melb = ZoneId.of("Australia/Melbourne")
-                DateTimeFormatter.ofPattern("HH:mm")
-                    .withZone(melb)
-                    .format(instant)
-            } catch (e: Exception) {
-                null
-            }
-        }
-
-        /**
-         * Returns the delay in minutes between two ISO-8601 UTC strings.
-         * Positive = late; negative = early; 0 = on time.
-         */
-        fun delayMinutes(scheduledUtc: String?, estimatedUtc: String?): Int {
-            if (scheduledUtc == null || estimatedUtc == null) return 0
-            return try {
-                val s = Instant.parse(scheduledUtc)
-                val e = Instant.parse(estimatedUtc)
-                ((e.epochSecond - s.epochSecond) / 60).toInt()
-            } catch (_: Exception) { 0 }
+    suspend fun isServerReachable(serverUrl: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            URL("$serverUrl/health").readText()
+            true
+        } catch (_: Exception) {
+            false
         }
     }
 }

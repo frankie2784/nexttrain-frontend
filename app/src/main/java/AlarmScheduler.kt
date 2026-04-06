@@ -8,7 +8,6 @@ import android.content.Intent
 import android.os.SystemClock
 import android.util.Log
 import com.trainwidget.prefs.WidgetPrefs
-import java.time.LocalTime
 
 private const val TAG = "AlarmScheduler"
 const val ACTION_ALARM_UPDATE = "com.trainwidget.ACTION_ALARM_UPDATE"
@@ -34,17 +33,10 @@ object AlarmScheduler {
             return
         }
 
-        val hasActiveNow = pairs.any { it.isActiveNow() }
-        val hasUpcoming = pairs.any {
-            val now = LocalTime.now()
-            it.activeFrom.isAfter(now) && it.activeFrom.isBefore(now.plusHours(12))
-        }
-
-        if (hasActiveNow || hasUpcoming) {
-            schedule(context)
-        } else {
-            Log.d(TAG, "No active or upcoming windows today — not scheduling")
-        }
+        // Always keep the alarm chain alive while OD pairs exist.
+        // The widget itself decides which pair to show; the scheduler
+        // just ensures periodic refresh so data stays fresh.
+        schedule(context)
     }
 
     fun schedule(context: Context) {
