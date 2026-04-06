@@ -53,6 +53,75 @@ if not API_KEY:
 app = Flask(__name__)
 
 
+@app.route("/debug/rt/compare")
+def debug_rt_compare():
+    """Compare RT absolute departure times vs static scheduled times for HBE trips."""
+    import requests as req
+    from google.transit.gtfs_realtime_pb2 import FeedMessage as FM
+    try:
+        resp = req.get(
+            "https://api.opendata.transport.vic.gov.au/"
+            "opendata/public-transport/gtfs/realtime/v1/metro/trip-updates",
+            headers={"KeyID": API_KEY},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        feed = FM()
+        feed.ParseFromString(resp.content)
+
+        comparisons = []
+        for entity in feed.entity:
+            if not entity.HasField("trip_update"):
+                continue
+            tu = entity.trip_update
+            tid = tu.trip.trip_id
+            if "HBE" not in tid:
+                continue
+            # Get static stop_times for this trip
+            static_times = gtfs_static.stop_times_by_trip.get(tid, [])
+            static_by_stop = {str(st["stop_id"]): st for st in static_times}
+
+            for stu in tu.stop_time_update:
+                sid = stu.stop_id
+                static_st = static_by_stop.get(sid)
+                if not static_st:
+                    continue
+                sched_dep = static_st.get("departure_time", "")
+                rt_dep_time = stu.departure.time if stu.HasField("departure") else 0
+                rt_dep_delay = stu.departure.delay if stu.HasField("departure") else None
+
+                if rt_dep_time and sched_dep:
+                    # Convert scheduled HH:MM:SS to unix timestamp for today
+                    rt_dt = datetime.fromtimestamp(rt_dep_time, LOCAL_TZ)
+                    try:
+                        h, m, s = (int(x) for x in sched_dep.split(":"))
+                        sched_dt = rt_dt.replace(hour=h % 24, minute=m, second=s)
+                        diff_seconds = int((rt_dt - sched_dt).total_seconds())
+                    except Exception:
+                        diff_seconds = None
+
+                    comparisons.append({
+                        "trip_id": tid,
+                        "stop_id": sid,
+                        "stop_name": gtfs_static.stops.get(sid, {}).get("stop_name", "?"),
+                        "scheduled": sched_dep,
+                        "rt_absolute": rt_dt.strftime("%H:%M:%S"),
+                        "rt_delay_field": rt_dep_delay,
+                        "computed_diff_seconds": diff_seconds,
+                    })
+
+        # Sort by abs diff
+        comparisons.sort(key=lambda x: abs(x.get("computed_diff_seconds") or 0), reverse=True)
+
+        return jsonify({
+            "total_comparisons": len(comparisons),
+            "with_nonzero_diff": sum(1 for c in comparisons if c.get("computed_diff_seconds", 0) != 0),
+            "comparisons": comparisons[:50],
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/debug/rt/raw")
 def debug_rt_raw():
     """Fetch GTFS-RT feed directly and dump raw fields for HBE trips."""
@@ -278,13 +347,33 @@ def departures():
             continue
 
         # Prefer the exact GTFS platform stop_id that produced this departure.
-        delay_seconds = gtfs_rt.get_delay(trip_id, dep.get("stop_id", origin_id))
+        matched_stop_id = dep.get("stop_id", origin_id)
+        delay_seconds = gtfs_rt.get_delay(trip_id, matched_stop_id)
         if delay_seconds is None:
             # Fall back to any resolved stop-id variant for the requested stop.
             for sid in gtfs_static._matching_stop_ids(origin_id):
                 delay_seconds = gtfs_rt.get_delay(trip_id, sid)
                 if delay_seconds is not None:
+                    matched_stop_id = sid
                     break
+
+        # PTV often sets delay=0 but provides the real predicted departure
+        # as an absolute unix timestamp.  Derive the true delay from that.
+        if delay_seconds is not None:
+            rt_dep_ts = gtfs_rt.get_dep_time(trip_id, matched_stop_id)
+            if rt_dep_ts:
+                dep_time_str = dep["departure_time"]
+                try:
+                    h, m, s = (int(x) for x in dep_time_str.split(":"))
+                    rt_dt = datetime.fromtimestamp(rt_dep_ts, LOCAL_TZ)
+                    sched_dt = rt_dt.replace(hour=h % 24, minute=m, second=s)
+                    computed = int((rt_dt - sched_dt).total_seconds())
+                    # Only override when the absolute time actually disagrees
+                    # with the delay field (PTV quirk).
+                    if computed != delay_seconds:
+                        delay_seconds = computed
+                except Exception:
+                    pass
 
         delay_minutes = round(delay_seconds / 60) if delay_seconds is not None else 0
 
