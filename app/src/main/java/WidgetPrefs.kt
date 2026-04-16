@@ -14,6 +14,10 @@ private const val KEY_API_KEY = "ptv_api_key"
 private const val KEY_OD_PAIRS = "od_pairs"
 private const val KEY_NOTIFICATION_MODE = "notification_mode_enabled"
 private const val KEY_SERVER_URL = "server_url"
+private const val KEY_DISMISSED_PREFIX = "dismissed_"
+private const val KEY_DISMISSED_ROUTE_ID = "dismissed_route_id"
+private const val KEY_LAST_ACTIVE_ROUTE_ID = "last_active_route_id"
+private const val KEY_SELECTED_ROUTE_ID = "selected_route_id"
 
 /**
  * Thin wrapper around SharedPreferences for all widget configuration.
@@ -81,6 +85,107 @@ class WidgetPrefs(context: Context) {
     /** Returns all OD pairs currently in their active time window. */
     fun activeOdPairs(): List<OdPair> = getOdPairs().filter { it.isActiveNow() }
 
+    /** Returns route id currently selected for widget display, if any. */
+    fun getSelectedRouteId(): String? {
+        return prefs.getString(KEY_SELECTED_ROUTE_ID, null)
+    }
+
+    /** Persist selected route id for widget display. */
+    fun setSelectedRouteId(routeId: String?) {
+        prefs.edit().apply {
+            if (routeId == null) {
+                remove(KEY_SELECTED_ROUTE_ID)
+            } else {
+                putString(KEY_SELECTED_ROUTE_ID, routeId)
+            }
+            apply()
+        }
+    }
+
+    /**
+     * Advances to the next configured route and stores it as selected.
+     * Returns the newly selected route, or null if no routes are configured.
+     */
+    fun cycleToNextRoute(): OdPair? {
+        val pairs = getOdPairs()
+        if (pairs.isEmpty()) {
+            setSelectedRouteId(null)
+            return null
+        }
+
+        val currentId = getSelectedRouteId()
+        val currentIndex = pairs.indexOfFirst { it.id == currentId }
+        val nextIndex = if (currentIndex >= 0) {
+            (currentIndex + 1) % pairs.size
+        } else {
+            0
+        }
+
+        val next = pairs[nextIndex]
+        setSelectedRouteId(next.id)
+        return next
+    }
+
+    // ── Notification dismissal tracking ───────────────────────────────────
+
+    /** Check if user has dismissed notifications for this route. */
+    fun isNotificationDismissedByUser(pairId: String): Boolean {
+        val dismissedRouteId = prefs.getString(KEY_DISMISSED_ROUTE_ID, null)
+        val legacyDismissed = prefs.getBoolean(KEY_DISMISSED_PREFIX + pairId, false)
+        return dismissedRouteId == pairId || legacyDismissed
+    }
+
+    /** Mark notification as dismissed by user for this route. */
+    fun setNotificationDismissedByUser(pairId: String, dismissed: Boolean) {
+        prefs.edit().apply {
+            if (dismissed) {
+                putString(KEY_DISMISSED_ROUTE_ID, pairId)
+            } else {
+                remove(KEY_DISMISSED_ROUTE_ID)
+            }
+            putBoolean(KEY_DISMISSED_PREFIX + pairId, dismissed)
+            apply()
+        }
+    }
+
+    /** Clear dismissal flag for this route (called when active window ends). */
+    fun clearNotificationDismissal(pairId: String) {
+        prefs.edit().apply {
+            if (prefs.getString(KEY_DISMISSED_ROUTE_ID, null) == pairId) {
+                remove(KEY_DISMISSED_ROUTE_ID)
+            }
+            remove(KEY_DISMISSED_PREFIX + pairId)
+            apply()
+        }
+    }
+
+    /** Returns route id that is currently dismissed, if any. */
+    fun getDismissedNotificationRouteId(): String? {
+        return prefs.getString(KEY_DISMISSED_ROUTE_ID, null)
+    }
+
+    /** Clears any current notification dismissal regardless of route id. */
+    fun clearNotificationDismissal() {
+        prefs.edit().remove(KEY_DISMISSED_ROUTE_ID).apply()
+    }
+
+    /** Last route id seen in an active window, or null when no route is active. */
+    fun getLastActiveRouteId(): String? {
+        return prefs.getString(KEY_LAST_ACTIVE_ROUTE_ID, null)
+    }
+
+    /** Persist current active route id (null means no active route right now). */
+    fun setLastActiveRouteId(routeId: String?) {
+        prefs.edit().apply {
+            if (routeId == null) {
+                remove(KEY_LAST_ACTIVE_ROUTE_ID)
+            } else {
+                putString(KEY_LAST_ACTIVE_ROUTE_ID, routeId)
+            }
+            apply()
+        }
+    }
+
     // ── Gson-serialisable DTO (avoids java.time serialization issues) ─────
 
     private data class OdPairDto(
@@ -95,7 +200,8 @@ class WidgetPrefs(context: Context) {
         val activeToHour: Int,
         val activeToMinute: Int,
         val activeDays: List<Int>? = null,
-        val directionId: Int
+        val directionId: Int,
+        val notificationsEnabled: Boolean = true
     ) {
         fun toOdPair() = OdPair(
             id = id,
@@ -107,7 +213,8 @@ class WidgetPrefs(context: Context) {
             activeFrom = LocalTime.of(activeFromHour, activeFromMinute),
             activeTo = LocalTime.of(activeToHour, activeToMinute),
             activeDays = activeDays?.toSet() ?: (1..7).toSet(),
-            directionId = directionId
+            directionId = directionId,
+            notificationsEnabled = notificationsEnabled
         )
 
         companion object {
@@ -122,8 +229,9 @@ class WidgetPrefs(context: Context) {
                 activeFromMinute = p.activeFrom.minute,
                 activeToHour = p.activeTo.hour,
                 activeToMinute = p.activeTo.minute,
-                activeDays = p.activeDays.sorted(),
-                directionId = p.directionId
+                activeDays = p.activeDays.toList(),
+                directionId = p.directionId,
+                notificationsEnabled = p.notificationsEnabled
             )
         }
     }

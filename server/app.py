@@ -204,7 +204,14 @@ def departures():
             if delay_seconds is not None:
                 dep_dt = dep_dt + timedelta(seconds=delay_seconds)
 
-            minutes_until = max(0, int((dep_dt - now).total_seconds() // 60))
+            # Static data is fetched with a generous look-back buffer so that
+            # RT-delayed trains aren't discarded too early.  Drop any trip
+            # whose effective departure time (schedule + RT delay) has already
+            # passed — it has genuinely departed and should not be shown.
+            if dep_dt < now:
+                continue
+
+            minutes_until = int((dep_dt - now).total_seconds() // 60)
         except Exception:
             minutes_until = 0
 

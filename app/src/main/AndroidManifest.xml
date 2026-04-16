@@ -65,5 +65,14 @@
             </intent-filter>
         </receiver>
 
+        <!-- Notification dismiss receiver -->
+        <receiver
+            android:name=".widget.NotificationDismissReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.trainwidget.action.DISMISS_NOTIFICATION" />
+            </intent-filter>
+        </receiver>
+
     </application>
 </manifest>

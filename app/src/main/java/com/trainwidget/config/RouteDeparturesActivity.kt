@@ -1,5 +1,6 @@
 package com.trainwidget.config
 
+import android.content.Intent
 import android.os.Bundle
 import android.text.SpannableStringBuilder
 import android.text.Spanned
@@ -15,22 +16,33 @@ import com.trainwidget.api.PtvApiClient
 import com.trainwidget.data.Departure
 import com.trainwidget.data.OdPair
 import com.trainwidget.prefs.WidgetPrefs
+import com.trainwidget.widget.ACTION_REFRESH
+import com.trainwidget.widget.TrainWidgetProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class RouteDeparturesActivity : AppCompatActivity() {
 
+    companion object {
+        private const val REFRESH_INTERVAL_MS = 60_000L
+    }
+
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private var refreshJob: Job? = null
 
     private lateinit var prefs: WidgetPrefs
     private lateinit var tvRouteTitle: TextView
     private lateinit var tvStatus: TextView
     private lateinit var departuresContainer: LinearLayout
     private lateinit var tvEmpty: TextView
+    private lateinit var switchRouteNotification: androidx.appcompat.widget.SwitchCompat
 
     private var pair: OdPair? = null
 
@@ -44,6 +56,7 @@ class RouteDeparturesActivity : AppCompatActivity() {
         tvStatus = findViewById(R.id.tv_status)
         departuresContainer = findViewById(R.id.departures_container)
         tvEmpty = findViewById(R.id.tv_empty)
+        switchRouteNotification = findViewById(R.id.switch_route_notification)
 
         findViewById<ImageButton>(R.id.btn_back).setOnClickListener { finish() }
         findViewById<Button>(R.id.btn_back_home).setOnClickListener { finish() }
@@ -58,10 +71,46 @@ class RouteDeparturesActivity : AppCompatActivity() {
             showEmpty("No route selected")
             return
         }
-
         val selectedPair = pair!!
         tvRouteTitle.text = "${selectedPair.originName} → ${selectedPair.destinationName}"
-        loadDepartures()
+
+        // Set up per-route notification toggle
+        switchRouteNotification.isChecked = selectedPair.notificationsEnabled
+        switchRouteNotification.setOnCheckedChangeListener { _, isChecked ->
+            // Update the OdPair and persist
+            val updatedPair = (pair ?: selectedPair).copy(notificationsEnabled = isChecked)
+            prefs.updateOdPair(updatedPair)
+            pair = updatedPair
+
+            // Refresh widget/notification immediately after toggling route notification setting.
+            sendBroadcast(Intent(this, TrainWidgetProvider::class.java).apply { action = ACTION_REFRESH })
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        startAutoRefresh()
+    }
+
+    override fun onStop() {
+        stopAutoRefresh()
+        super.onStop()
+    }
+
+    private fun startAutoRefresh() {
+        if (refreshJob?.isActive == true) return
+
+        refreshJob = scope.launch {
+            while (isActive) {
+                loadDepartures()
+                delay(REFRESH_INTERVAL_MS)
+            }
+        }
+    }
+
+    private fun stopAutoRefresh() {
+        refreshJob?.cancel()
+        refreshJob = null
     }
 
     private fun loadDepartures() {
@@ -146,6 +195,7 @@ class RouteDeparturesActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        stopAutoRefresh()
         super.onDestroy()
         scope.cancel()
     }

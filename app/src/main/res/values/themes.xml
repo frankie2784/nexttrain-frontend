@@ -24,7 +24,7 @@
         <item name="android:textColorSecondary">@color/nt_text</item>
     </style>
 
-    <style name="Theme.TrainWidget.WhiteTimePickerDialog" parent="Theme.MaterialComponents.Light.Dialog.Alert">
+    <style name="Theme.TrainWidget.WhiteTimePickerDialog" parent="Theme.MaterialComponents.DayNight.Dialog.Alert">
         <item name="colorSurface">@color/nt_surface</item>
         <item name="android:colorBackground">@color/nt_surface</item>
         <item name="android:colorBackgroundFloating">@color/nt_surface</item>
@@ -38,6 +38,6 @@
     </style>
 
     <style name="Widget.TrainWidget.TimePickerDialogButton" parent="Widget.MaterialComponents.Button.TextButton.Dialog">
-        <item name="android:textColor">@android:color/black</item>
+        <item name="android:textColor">@color/nt_primary</item>
     </style>
 </resources>

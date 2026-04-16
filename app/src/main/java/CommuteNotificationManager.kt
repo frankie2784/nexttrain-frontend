@@ -12,11 +12,13 @@ import com.trainwidget.R
 import com.trainwidget.config.ConfigActivity
 import com.trainwidget.data.Departure
 import com.trainwidget.data.OdPair
+import com.trainwidget.prefs.WidgetPrefs
 
 private const val CHANNEL_ID = "next_train_departures"
 private const val CHANNEL_NAME = "Train departures"
 private const val CHANNEL_DESC = "Live departures for lock screen notification"
 private const val NOTIFICATION_ID = 1001
+private const val ACTION_DISMISS_NOTIFICATION = "com.trainwidget.action.DISMISS_NOTIFICATION"
 
 object CommuteNotificationManager {
 
@@ -30,11 +32,35 @@ object CommuteNotificationManager {
         departures: List<Departure>,
         isDemoData: Boolean
     ) {
+        val prefs = WidgetPrefs(context)
+
+        // Only show notification if it's within the active time/day window for this route
+        if (!pair.isActiveNow() || !pair.notificationsEnabled) {
+            clear(context)
+            return
+        }
+
+        // Don't show if user has dismissed this notification during the active window
+        if (prefs.isNotificationDismissedByUser(pair.id)) {
+            clear(context)
+            return
+        }
+
         ensureChannel(context)
         val openIntent = PendingIntent.getActivity(
             context,
             0,
             Intent(context, ConfigActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val dismissIntent = PendingIntent.getBroadcast(
+            context,
+            NOTIFICATION_ID,
+            Intent(context, NotificationDismissReceiver::class.java).apply {
+                action = ACTION_DISMISS_NOTIFICATION
+                putExtra("pair_id", pair.id)
+            },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -83,9 +109,9 @@ object CommuteNotificationManager {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(openIntent)
+            .addAction(0, "Dismiss", dismissIntent)
             .build()
 
         try {
@@ -111,7 +137,6 @@ object CommuteNotificationManager {
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(openIntent)
             .build()

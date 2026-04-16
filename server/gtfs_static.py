@@ -31,6 +31,10 @@ GTFS_ZIP_URL = (
 GTFS_CACHE_PATH = os.path.join(os.path.dirname(__file__), "data", "gtfs.zip")
 ROUTE_TYPE_TRAIN = "2"  # GTFS route_type for rail
 LOCAL_TZ = ZoneInfo("Australia/Melbourne")
+# How far into the past (seconds) we keep a scheduled departure so that
+# app.py can still apply a real-time delay and show the train as upcoming.
+# 45 minutes covers even severe delays on the Metro network.
+RT_DELAY_BUFFER_SECS = 45 * 60
 
 
 class GtfsStatic:
@@ -385,7 +389,11 @@ class GtfsStatic:
                     if not self.service_runs_on(trip["service_id"], service_day):
                         continue
 
-                    if day_offset == 0 and dep_seconds < now_seconds:
+                    # Keep departures that may be running late: only discard
+                    # a scheduled time that is more than RT_DELAY_BUFFER_SECS
+                    # in the past, since app.py will add the real-time offset
+                    # on top and may push the effective departure into the future.
+                    if day_offset == 0 and dep_seconds < now_seconds - RT_DELAY_BUFFER_SECS:
                         continue
 
                     dep_dt = datetime.combine(service_day, datetime.min.time(), tzinfo=LOCAL_TZ) + timedelta(seconds=dep_seconds)

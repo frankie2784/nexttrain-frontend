@@ -32,6 +32,7 @@ import java.time.format.DateTimeFormatter
 
 private const val TAG = "NextTrain"
 const val ACTION_REFRESH = "com.trainwidget.ACTION_REFRESH"
+const val ACTION_CYCLE_ROUTE = "com.trainwidget.ACTION_CYCLE_ROUTE"
 
 class TrainWidgetProvider : AppWidgetProvider() {
 
@@ -49,6 +50,17 @@ class TrainWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
+        if (intent.action == ACTION_CYCLE_ROUTE) {
+            Log.d(TAG, "Received cycle route intent")
+            val prefs = WidgetPrefs(context)
+            prefs.cycleToNextRoute()
+            val manager = AppWidgetManager.getInstance(context)
+            val ids = manager.getAppWidgetIds(ComponentName(context, TrainWidgetProvider::class.java))
+            ids.forEach { updateWidget(context, manager, it) }
+            AlarmScheduler.scheduleIfNeeded(context)
+            return
+        }
+
         if (intent.action == ACTION_REFRESH || intent.action == Intent.ACTION_BOOT_COMPLETED) {
             Log.d(TAG, "Received refresh/boot intent")
             val manager = AppWidgetManager.getInstance(context)
@@ -70,10 +82,27 @@ class TrainWidgetProvider : AppWidgetProvider() {
 
     private fun updateWidget(context: Context, manager: AppWidgetManager, widgetId: Int) {
         val prefs = WidgetPrefs(context)
+        val activePairNow = prefs.activeOdPairs().firstOrNull()
+        val currentActiveRouteId = activePairNow?.id
+        val lastActiveRouteId = prefs.getLastActiveRouteId()
 
-        val activePair = prefs.activeOdPairs().firstOrNull()
-            ?: prefs.getOdPairs().firstOrNull()
-            ?: demoOdPair()
+        // Clear dismissal whenever a new active window starts for any route.
+        if (currentActiveRouteId != null && currentActiveRouteId != lastActiveRouteId) {
+            prefs.clearNotificationDismissal()
+        }
+
+        // If the last active route is no longer active, clear its dismissal flag so it can notify again next time.
+        if (lastActiveRouteId != null && (currentActiveRouteId == null || currentActiveRouteId != lastActiveRouteId)) {
+            // Find the last active route object
+            val lastPair = prefs.getOdPairs().find { it.id == lastActiveRouteId }
+            if (lastPair != null && !lastPair.isActiveNow()) {
+                prefs.clearNotificationDismissal(lastActiveRouteId)
+            }
+        }
+
+        prefs.setLastActiveRouteId(currentActiveRouteId)
+
+        val activePair = resolveSelectedPair(prefs, activePairNow)
 
         // If server not configured and no OD pairs, show demo.
         if (!prefs.serverConfigured && prefs.getOdPairs().isEmpty()) {
@@ -121,6 +150,23 @@ class TrainWidgetProvider : AppWidgetProvider() {
                 departures = departures,
                 isDemoData = false
             )
+
+            // Notifications are based on the route currently active in its time window,
+            // not necessarily the route selected for widget display.
+            val notificationPair = activePairNow
+            if (notificationPair == null) {
+                CommuteNotificationManager.clear(context)
+            } else if (notificationPair.id == activePair.id) {
+                CommuteNotificationManager.showDepartures(context, notificationPair, departures, false)
+            } else {
+                val notificationDepartures = client.getDeparturesFromServer(
+                    serverUrl = prefs.serverUrl,
+                    stopId = notificationPair.originStopId,
+                    destinationStopId = notificationPair.destinationStopId,
+                    directionId = notificationPair.directionId
+                )
+                CommuteNotificationManager.showDepartures(context, notificationPair, notificationDepartures, false)
+            }
         }
     }
 
@@ -137,10 +183,11 @@ class TrainWidgetProvider : AppWidgetProvider() {
         views.setTextViewText(R.id.tv_last_updated, "Updating…")
         views.setTextViewText(R.id.tv_primary_minutes, "--")
         views.setTextViewText(R.id.tv_primary_time, "Updating")
-        views.setViewVisibility(R.id.tv_secondary_1, View.GONE)
-        views.setViewVisibility(R.id.tv_secondary_separator, View.GONE)
-        views.setViewVisibility(R.id.tv_secondary_2, View.GONE)
+        views.setViewVisibility(R.id.tv_secondary_1, View.INVISIBLE)
+        views.setViewVisibility(R.id.tv_secondary_separator, View.INVISIBLE)
+        views.setViewVisibility(R.id.tv_secondary_2, View.INVISIBLE)
         views.setViewVisibility(R.id.tv_no_trains, View.GONE)
+        applyTapActions(context, views, widgetId)
         manager.updateAppWidget(widgetId, views)
     }
 
@@ -155,24 +202,17 @@ class TrainWidgetProvider : AppWidgetProvider() {
         views.setTextViewText(R.id.tv_last_updated, "")
         views.setTextViewText(R.id.tv_primary_minutes, "--")
         views.setTextViewText(R.id.tv_primary_time, "--:--")
-        views.setViewVisibility(R.id.tv_secondary_1, View.GONE)
-        views.setViewVisibility(R.id.tv_secondary_separator, View.GONE)
-        views.setViewVisibility(R.id.tv_secondary_2, View.GONE)
+        views.setViewVisibility(R.id.tv_secondary_1, View.INVISIBLE)
+        views.setViewVisibility(R.id.tv_secondary_separator, View.INVISIBLE)
+        views.setViewVisibility(R.id.tv_secondary_2, View.INVISIBLE)
         views.setViewVisibility(R.id.tv_no_trains, View.VISIBLE)
         views.setTextViewText(R.id.tv_no_trains, message)
 
-        // Tap → open config
-        val configIntent = Intent(context, ConfigActivity::class.java)
-        val pi = PendingIntent.getActivity(context, 0, configIntent, PendingIntent.FLAG_IMMUTABLE)
-        views.setOnClickPendingIntent(R.id.widget_root, pi)
+        applyTapActions(context, views, widgetId)
         manager.updateAppWidget(widgetId, views)
 
-        val prefs = WidgetPrefs(context)
-        if (prefs.notificationModeEnabled) {
-            CommuteNotificationManager.showStatus(context, "Next Train", message)
-        } else {
-            CommuteNotificationManager.clear(context)
-        }
+        // No notification for loading state; handled by per-route logic in showDepartures
+        CommuteNotificationManager.clear(context)
     }
 
     private fun showIdleState(
@@ -190,25 +230,19 @@ class TrainWidgetProvider : AppWidgetProvider() {
         views.setTextViewText(R.id.tv_last_updated, "")
         views.setTextViewText(R.id.tv_primary_minutes, "--")
         views.setTextViewText(R.id.tv_primary_time, "--:--")
-        views.setViewVisibility(R.id.tv_secondary_1, View.GONE)
-        views.setViewVisibility(R.id.tv_secondary_separator, View.GONE)
-        views.setViewVisibility(R.id.tv_secondary_2, View.GONE)
+        views.setViewVisibility(R.id.tv_secondary_1, View.INVISIBLE)
+        views.setViewVisibility(R.id.tv_secondary_separator, View.INVISIBLE)
+        views.setViewVisibility(R.id.tv_secondary_2, View.INVISIBLE)
         views.setViewVisibility(R.id.tv_no_trains, View.VISIBLE)
         val msg = nextPair?.let {
             "Active ${it.activeFrom}–${it.activeTo}"
         } ?: "No routes configured"
         views.setTextViewText(R.id.tv_no_trains, msg)
+        applyTapActions(context, views, widgetId)
         manager.updateAppWidget(widgetId, views)
 
-        if (prefs.notificationModeEnabled) {
-            CommuteNotificationManager.showStatus(
-                context,
-                nextPair?.let { "${it.originName} -> ${it.destinationName}" } ?: "Next Train",
-                msg
-            )
-        } else {
-            CommuteNotificationManager.clear(context)
-        }
+        // No notification for idle state; handled by per-route logic in showDepartures
+        CommuteNotificationManager.clear(context)
     }
 
     private fun renderDepartures(
@@ -229,9 +263,9 @@ class TrainWidgetProvider : AppWidgetProvider() {
         if (departures.isEmpty()) {
             views.setTextViewText(R.id.tv_primary_minutes, "--")
             views.setTextViewText(R.id.tv_primary_time, "--:--")
-            views.setViewVisibility(R.id.tv_secondary_1, View.GONE)
-            views.setViewVisibility(R.id.tv_secondary_separator, View.GONE)
-            views.setViewVisibility(R.id.tv_secondary_2, View.GONE)
+            views.setViewVisibility(R.id.tv_secondary_1, View.INVISIBLE)
+            views.setViewVisibility(R.id.tv_secondary_separator, View.INVISIBLE)
+            views.setViewVisibility(R.id.tv_secondary_2, View.INVISIBLE)
             views.setViewVisibility(R.id.tv_no_trains, View.VISIBLE)
             views.setTextViewText(R.id.tv_no_trains, "No trains found")
         } else {
@@ -244,7 +278,7 @@ class TrainWidgetProvider : AppWidgetProvider() {
                 views.setTextViewText(R.id.tv_secondary_1, compactDepartureText(second))
                 views.setViewVisibility(R.id.tv_secondary_1, View.VISIBLE)
             } else {
-                views.setViewVisibility(R.id.tv_secondary_1, View.GONE)
+                views.setViewVisibility(R.id.tv_secondary_1, View.INVISIBLE)
             }
 
             val third = departures.getOrNull(2)
@@ -252,34 +286,60 @@ class TrainWidgetProvider : AppWidgetProvider() {
                 views.setTextViewText(R.id.tv_secondary_2, compactDepartureText(third))
                 views.setViewVisibility(R.id.tv_secondary_2, View.VISIBLE)
             } else {
-                views.setViewVisibility(R.id.tv_secondary_2, View.GONE)
+                views.setViewVisibility(R.id.tv_secondary_2, View.INVISIBLE)
             }
 
             views.setViewVisibility(
                 R.id.tv_secondary_separator,
-                if (second != null && third != null) View.VISIBLE else View.GONE
+                if (second != null && third != null) View.VISIBLE else View.INVISIBLE
             )
 
             views.setViewVisibility(R.id.tv_no_trains, View.GONE)
         }
 
-        // Tap to refresh
+        applyTapActions(context, views, widgetId)
+        manager.updateAppWidget(widgetId, views)
+    }
+
+    private fun resolveSelectedPair(prefs: WidgetPrefs, activePairNow: OdPair?): OdPair {
+        val configuredPairs = prefs.getOdPairs()
+        if (configuredPairs.isEmpty()) {
+            prefs.setSelectedRouteId(null)
+            return demoOdPair()
+        }
+
+        val selected = prefs.getSelectedRouteId()?.let { id ->
+            configuredPairs.firstOrNull { it.id == id }
+        }
+        if (selected != null) return selected
+
+        val fallback = activePairNow ?: configuredPairs.first()
+        prefs.setSelectedRouteId(fallback.id)
+        return fallback
+    }
+
+    private fun applyTapActions(context: Context, views: RemoteViews, widgetId: Int) {
         val refreshIntent = Intent(context, TrainWidgetProvider::class.java).apply {
             action = ACTION_REFRESH
         }
-        val pi = PendingIntent.getBroadcast(
-            context, widgetId, refreshIntent,
+        val refreshPi = PendingIntent.getBroadcast(
+            context,
+            widgetId,
+            refreshIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        views.setOnClickPendingIntent(R.id.widget_root, pi)
+        views.setOnClickPendingIntent(R.id.tap_refresh_zone, refreshPi)
 
-        manager.updateAppWidget(widgetId, views)
-        val prefs = WidgetPrefs(context)
-        if (prefs.notificationModeEnabled) {
-            CommuteNotificationManager.showDepartures(context, pair, departures, isDemoData)
-        } else {
-            CommuteNotificationManager.clear(context)
+        val cycleIntent = Intent(context, TrainWidgetProvider::class.java).apply {
+            action = ACTION_CYCLE_ROUTE
         }
+        val cyclePi = PendingIntent.getBroadcast(
+            context,
+            widgetId + 10_000,
+            cycleIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        views.setOnClickPendingIntent(R.id.tap_cycle_zone, cyclePi)
     }
 
     private fun formatDepartureTime(dep: Departure): CharSequence {

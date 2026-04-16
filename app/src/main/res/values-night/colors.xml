@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="nt_bg">#111318</color>
+    <color name="nt_surface">#1E2128</color>
+    <color name="nt_text">#E8EDF4</color>
+    <color name="nt_muted">#8E9BB5</color>
+    <color name="nt_divider">#2D3344</color>
+</resources>

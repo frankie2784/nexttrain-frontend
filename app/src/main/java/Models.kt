@@ -259,7 +259,8 @@ data class OdPair(
     val activeFrom: LocalTime,  // start of active window (inclusive)
     val activeTo: LocalTime,    // end of active window (inclusive)
     val activeDays: Set<Int> = (1..7).toSet(), // java.time.DayOfWeek values (1=Mon..7=Sun)
-    val directionId: Int = -1   // -1 = auto-detect from destination
+    val directionId: Int = -1,   // -1 = auto-detect from destination
+    val notificationsEnabled: Boolean = true // per-route notification toggle
 ) {
     fun isActiveNow(): Boolean {
         val today = DayOfWeek.from(java.time.LocalDate.now()).value

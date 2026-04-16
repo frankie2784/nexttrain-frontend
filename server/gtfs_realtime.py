@@ -32,6 +32,9 @@ class GtfsRealtime:
         self.delays: dict[tuple[str, str], int | None] = {}
         # (trip_id, stop_id) -> absolute departure unix timestamp (or None)
         self.dep_times: dict[tuple[str, str], int | None] = {}
+        # trip_id -> last known delay (seconds) — used to propagate delay to
+        # stops not yet explicitly included in the feed (GTFS-RT spec §2.1).
+        self.trip_last_delays: dict[str, int] = {}
         self.cancelled_trips: set[str] = set()
         self.last_fetched: Optional[datetime] = None
 
@@ -49,6 +52,7 @@ class GtfsRealtime:
 
             new_delays: dict[tuple[str, str], int | None] = {}
             new_dep_times: dict[tuple[str, str], int | None] = {}
+            new_trip_last_delays: dict[str, int] = {}
             new_cancelled_trips: set[str] = set()
             for entity in feed.entity:
                 if entity.HasField("trip_update"):
@@ -56,6 +60,7 @@ class GtfsRealtime:
                     trip_id = tu.trip.trip_id
                     if tu.trip.schedule_relationship == tu.trip.ScheduleRelationship.CANCELED:
                         new_cancelled_trips.add(trip_id)
+                    last_known_delay: int | None = None
                     for stu in tu.stop_time_update:
                         stop_id = stu.stop_id
                         key = (trip_id, stop_id)
@@ -71,10 +76,17 @@ class GtfsRealtime:
                             dep_time = None
                         new_delays[key] = delay
                         new_dep_times[key] = dep_time
+                        if delay is not None:
+                            last_known_delay = delay
+                    # Propagate the last known delay to future stops that are not
+                    # yet explicitly listed in the feed (GTFS-RT spec §2.1).
+                    if last_known_delay is not None:
+                        new_trip_last_delays[trip_id] = last_known_delay
 
             with self._lock:
                 self.delays = new_delays
                 self.dep_times = new_dep_times
+                self.trip_last_delays = new_trip_last_delays
                 self.cancelled_trips = new_cancelled_trips
                 self.last_fetched = datetime.now(LOCAL_TZ)
 
@@ -83,9 +95,17 @@ class GtfsRealtime:
             logger.exception("Failed to fetch GTFS-RT feed")
 
     def get_delay(self, trip_id: str, stop_id: str) -> int | None:
-        """Return delay in seconds for a (trip_id, stop_id) pair, or None."""
+        """Return delay in seconds for a (trip_id, stop_id) pair.
+
+        If the exact stop is absent from the feed, falls back to the trip's
+        last known stop-time delay — i.e. the delay propagates forward to
+        stops not yet explicitly included (GTFS-RT spec §2.1).
+        """
         with self._lock:
-            return self.delays.get((trip_id, stop_id))
+            key = (trip_id, stop_id)
+            if key in self.delays:
+                return self.delays[key]
+            return self.trip_last_delays.get(trip_id)
 
     def get_dep_time(self, trip_id: str, stop_id: str) -> int | None:
         """Return the absolute departure unix timestamp, or None."""
