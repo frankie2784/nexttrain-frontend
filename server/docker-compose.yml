@@ -6,7 +6,7 @@ services:
     ports:
       - "5050:5050"
     environment:
-      - PTV_API_KEY=${PTV_API_KEY}
+      - PTV_API_KEY=${PTV_API_KEY:-}
       - PORT=5050
     volumes:
       - gtfs-data:/app/data
