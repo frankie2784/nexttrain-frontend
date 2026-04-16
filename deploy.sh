@@ -17,7 +17,7 @@ set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
 RPI_HOST="frankie2784@frankipi"
-RPI_REPO="/nas/github/nexttrain_server"
+RPI_REPO="/nas/github/nexttrain"
 RPI_SERVER_DIR="${RPI_REPO}/server"
 
 # ── Colours ───────────────────────────────────────────────────────────────────
