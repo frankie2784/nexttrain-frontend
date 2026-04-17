@@ -7,7 +7,8 @@ the latest delay information in memory, keyed by (trip_id, stop_id).
 
 import logging
 import threading
-from datetime import datetime
+from collections import deque
+from datetime import datetime, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo
 
@@ -37,6 +38,9 @@ class GtfsRealtime:
         self.trip_last_delays: dict[str, int] = {}
         self.cancelled_trips: set[str] = set()
         self.last_fetched: Optional[datetime] = None
+        # Rolling 30-min history of total network delay (one sample per fetch).
+        # 120 samples × 15s interval = 30 minutes of history.
+        self.delay_history: deque[tuple[datetime, float]] = deque(maxlen=120)
 
     def fetch(self, api_key: str) -> None:
         """Download and parse the protobuf feed."""
@@ -83,12 +87,14 @@ class GtfsRealtime:
                     if last_known_delay is not None:
                         new_trip_last_delays[trip_id] = last_known_delay
 
+            total_delay = float(sum(d for d in new_delays.values() if d is not None))
             with self._lock:
                 self.delays = new_delays
                 self.dep_times = new_dep_times
                 self.trip_last_delays = new_trip_last_delays
                 self.cancelled_trips = new_cancelled_trips
                 self.last_fetched = datetime.now(LOCAL_TZ)
+                self.delay_history.append((datetime.now(LOCAL_TZ), total_delay))
 
             logger.debug("GTFS-RT updated: %d stop-time delays", len(new_delays))
         except Exception:
@@ -116,6 +122,12 @@ class GtfsRealtime:
         """Return True if the trip is marked cancelled in GTFS-RT."""
         with self._lock:
             return trip_id in self.cancelled_trips
+
+    def get_delay_history(self) -> list[tuple[datetime, float]]:
+        """Return samples from the last 30 minutes as (timestamp, total_delay_seconds)."""
+        cutoff = datetime.now(LOCAL_TZ) - timedelta(minutes=30)
+        with self._lock:
+            return [(ts, v) for ts, v in self.delay_history if ts >= cutoff]
 
 
 # Singleton

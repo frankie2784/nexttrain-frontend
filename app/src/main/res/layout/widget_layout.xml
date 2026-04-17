@@ -7,6 +7,7 @@
     android:padding="5dp">
 
     <LinearLayout
+        android:id="@+id/layout_normal_content"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
@@ -147,6 +148,34 @@
                 android:ellipsize="end"
                 android:visibility="gone" />
         </LinearLayout>
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/layout_sparkline"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/iv_sparkline"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:scaleType="fitXY" />
+
+        <TextView
+            android:id="@+id/tv_sparkline_label"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical|end"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp"
+            android:textAlignment="textEnd"
+            android:paddingStart="6dp"
+            android:paddingEnd="2dp" />
 
     </LinearLayout>
 

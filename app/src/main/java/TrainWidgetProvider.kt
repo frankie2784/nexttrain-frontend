@@ -6,6 +6,10 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.text.SpannableStringBuilder
 import android.text.Spanned
@@ -19,8 +23,10 @@ import com.trainwidget.R
 import com.trainwidget.api.PtvApiClient
 import com.trainwidget.config.ConfigActivity
 import com.trainwidget.data.Departure
+import com.trainwidget.data.DelayPoint
 import com.trainwidget.data.OdPair
 import com.trainwidget.prefs.WidgetPrefs
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -104,6 +110,12 @@ class TrainWidgetProvider : AppWidgetProvider() {
 
         val activePair = resolveSelectedPair(prefs, activePairNow)
 
+        // If pairs are configured but none are currently active, show sparkline idle state.
+        if (activePairNow == null && prefs.getOdPairs().isNotEmpty()) {
+            showIdleState(context, manager, widgetId, prefs)
+            return
+        }
+
         // If server not configured and no OD pairs, show demo.
         if (!prefs.serverConfigured && prefs.getOdPairs().isEmpty()) {
             showLoadingState(context, manager, widgetId, activePair)
@@ -179,6 +191,8 @@ class TrainWidgetProvider : AppWidgetProvider() {
         pair: OdPair
     ) {
         val views = RemoteViews(context.packageName, R.layout.widget_layout)
+        views.setViewVisibility(R.id.layout_sparkline, View.GONE)
+        views.setViewVisibility(R.id.layout_normal_content, View.VISIBLE)
         views.setTextViewText(R.id.tv_route_label, "${pair.originName} → ${pair.destinationName}")
         views.setTextViewText(R.id.tv_last_updated, "Updating…")
         views.setTextViewText(R.id.tv_primary_minutes, "--")
@@ -198,6 +212,8 @@ class TrainWidgetProvider : AppWidgetProvider() {
         message: String
     ) {
         val views = RemoteViews(context.packageName, R.layout.widget_layout)
+        views.setViewVisibility(R.id.layout_sparkline, View.GONE)
+        views.setViewVisibility(R.id.layout_normal_content, View.VISIBLE)
         views.setTextViewText(R.id.tv_route_label, "Next Train")
         views.setTextViewText(R.id.tv_last_updated, "")
         views.setTextViewText(R.id.tv_primary_minutes, "--")
@@ -221,28 +237,33 @@ class TrainWidgetProvider : AppWidgetProvider() {
         widgetId: Int,
         prefs: WidgetPrefs
     ) {
-        val nextPair = prefs.getOdPairs().firstOrNull()
+        // Show sparkline container immediately (empty); fill in bitmap asynchronously.
         val views = RemoteViews(context.packageName, R.layout.widget_layout)
-        views.setTextViewText(
-            R.id.tv_route_label,
-            nextPair?.let { "${it.originName} → ${it.destinationName}" } ?: "Next Train"
-        )
-        views.setTextViewText(R.id.tv_last_updated, "")
-        views.setTextViewText(R.id.tv_primary_minutes, "--")
-        views.setTextViewText(R.id.tv_primary_time, "--:--")
-        views.setViewVisibility(R.id.tv_secondary_1, View.INVISIBLE)
-        views.setViewVisibility(R.id.tv_secondary_separator, View.INVISIBLE)
-        views.setViewVisibility(R.id.tv_secondary_2, View.INVISIBLE)
-        views.setViewVisibility(R.id.tv_no_trains, View.VISIBLE)
-        val msg = nextPair?.let {
-            "Active ${it.activeFrom}–${it.activeTo}"
-        } ?: "No routes configured"
-        views.setTextViewText(R.id.tv_no_trains, msg)
+        views.setViewVisibility(R.id.layout_normal_content, View.GONE)
+        views.setViewVisibility(R.id.layout_sparkline, View.VISIBLE)
         applyTapActions(context, views, widgetId)
         manager.updateAppWidget(widgetId, views)
 
-        // No notification for idle state; handled by per-route logic in showDepartures
         CommuteNotificationManager.clear(context)
+
+        scope.launch {
+            val client = PtvApiClient(prefs.devId, prefs.apiKey)
+            val history = client.getDelayHistory(prefs.serverUrl)
+            if (history != null && history.points.size >= 2) {
+                val latestDelayMin = history.points.last().total_delay_seconds / 60f
+                val bitmap = drawSparkline(history.points, 600, 100)
+                val labelColor = delayColour(latestDelayMin)
+                val labelText = "${latestDelayMin.roundToInt()}m\ndelay"
+                val updated = RemoteViews(context.packageName, R.layout.widget_layout)
+                updated.setViewVisibility(R.id.layout_normal_content, View.GONE)
+                updated.setViewVisibility(R.id.layout_sparkline, View.VISIBLE)
+                updated.setImageViewBitmap(R.id.iv_sparkline, bitmap)
+                updated.setTextViewText(R.id.tv_sparkline_label, labelText)
+                updated.setTextColor(R.id.tv_sparkline_label, labelColor)
+                applyTapActions(context, updated, widgetId)
+                manager.updateAppWidget(widgetId, updated)
+            }
+        }
     }
 
     private fun renderDepartures(
@@ -254,6 +275,8 @@ class TrainWidgetProvider : AppWidgetProvider() {
         isDemoData: Boolean
     ) {
         val views = RemoteViews(context.packageName, R.layout.widget_layout)
+        views.setViewVisibility(R.id.layout_sparkline, View.GONE)
+        views.setViewVisibility(R.id.layout_normal_content, View.VISIBLE)
         views.setTextViewText(R.id.tv_route_label, "${pair.originName} → ${pair.destinationName}")
         val now = DateTimeFormatter.ofPattern("HH:mm")
             .withZone(ZoneId.of("Australia/Melbourne"))
@@ -380,6 +403,56 @@ class TrainWidgetProvider : AppWidgetProvider() {
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
         )
         return out
+    }
+
+    private fun drawSparkline(points: List<DelayPoint>, widthPx: Int, heightPx: Int): Bitmap {
+        val bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val delayMins = points.map { it.total_delay_seconds / 60f }
+        val maxDelay = maxOf(delayMins.maxOrNull() ?: 0f, 5f)
+        val n = points.size
+        if (n < 2) return bitmap
+
+        val paint = Paint().apply {
+            isAntiAlias = true
+            style = Paint.Style.STROKE
+            strokeWidth = 4f
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+
+        for (i in 0 until n - 1) {
+            val x0 = i.toFloat() / (n - 1) * widthPx
+            val y0 = heightPx - (delayMins[i] / maxDelay) * heightPx
+            val x1 = (i + 1).toFloat() / (n - 1) * widthPx
+            val y1 = heightPx - (delayMins[i + 1] / maxDelay) * heightPx
+            val midDelay = (delayMins[i] + delayMins[i + 1]) / 2f
+            paint.color = delayColour(midDelay)
+            canvas.drawLine(x0, y0, x1, y1, paint)
+        }
+
+        return bitmap
+    }
+
+    private fun delayColour(delayMin: Float): Int {
+        val green = Color.parseColor("#4CAF50")
+        val amber = Color.parseColor("#FFC107")
+        val red   = Color.parseColor("#F44336")
+        return when {
+            delayMin <= 0f  -> green
+            delayMin < 50f  -> lerpColour(green, amber, delayMin / 50f)
+            delayMin < 100f -> lerpColour(amber, red, (delayMin - 50f) / 50f)
+            else            -> red
+        }
+    }
+
+    private fun lerpColour(from: Int, to: Int, t: Float): Int {
+        val f = t.coerceIn(0f, 1f)
+        return Color.rgb(
+            (Color.red(from)   + (Color.red(to)   - Color.red(from))   * f).toInt(),
+            (Color.green(from) + (Color.green(to) - Color.green(from)) * f).toInt(),
+            (Color.blue(from)  + (Color.blue(to)  - Color.blue(from))  * f).toInt()
+        )
     }
 
     private fun demoOdPair(): OdPair = OdPair(

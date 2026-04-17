@@ -244,6 +244,18 @@ object MelbourneStations {
     ).distinctBy { it.stopId }.sortedBy { it.name }
 }
 
+// ── Delay sparkline ───────────────────────────────────────────────────────
+
+data class DelayPoint(
+    val seconds_ago: Int,
+    val total_delay_seconds: Float
+)
+
+data class DelayHistoryResponse(
+    val window_minutes: Int,
+    val points: List<DelayPoint>
+)
+
 // ── Widget OD Pair configuration ───────────────────────────────────────────
 
 /**

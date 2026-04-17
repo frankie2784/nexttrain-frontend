@@ -100,6 +100,20 @@ def reachable_destinations():
     })
 
 
+@app.route("/delay_history")
+def delay_history():
+    now = datetime.now(LOCAL_TZ)
+    history = gtfs_rt.get_delay_history()
+    points = [
+        {
+            "seconds_ago": int((now - ts).total_seconds()),
+            "total_delay_seconds": v,
+        }
+        for ts, v in history
+    ]
+    return jsonify({"window_minutes": 30, "points": points})
+
+
 @app.route("/departures")
 def departures():
     origin_gtfs_id = request.args.get("origin_gtfs_id")

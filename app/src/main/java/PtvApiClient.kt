@@ -3,6 +3,7 @@ package com.trainwidget.api
 import android.util.Log
 import com.google.gson.Gson
 import com.trainwidget.data.Departure
+import com.trainwidget.data.DelayHistoryResponse
 import com.trainwidget.data.PtvDeparture
 import com.trainwidget.data.PtvDeparturesResponse
 import kotlinx.coroutines.Dispatchers
@@ -176,6 +177,16 @@ class PtvApiClient(
         } catch (e: Exception) {
             Log.e(TAG, "Failed to fetch departures from server $serverUrl", e)
             emptyList()
+        }
+    }
+
+    suspend fun getDelayHistory(serverUrl: String): DelayHistoryResponse? = withContext(Dispatchers.IO) {
+        try {
+            val json = URL("$serverUrl/delay_history").readText()
+            Gson().fromJson(json, DelayHistoryResponse::class.java)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to fetch delay history from $serverUrl", e)
+            null
         }
     }
 
