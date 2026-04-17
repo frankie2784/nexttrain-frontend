@@ -238,18 +238,32 @@ class TrainWidgetProvider : AppWidgetProvider() {
         prefs: WidgetPrefs
     ) {
         val nextPair = prefs.getOdPairs().firstOrNull()
-        val fallbackLabel = nextPair?.let { "Active\n${it.activeFrom}–${it.activeTo}" } ?: "Idle"
 
-        // Show sparkline container with fallback label immediately.
+        // Always render normal content first — guaranteed something is visible.
         val views = RemoteViews(context.packageName, R.layout.widget_layout)
-        views.setViewVisibility(R.id.layout_normal_content, View.GONE)
-        views.setViewVisibility(R.id.layout_sparkline, View.VISIBLE)
-        views.setTextViewText(R.id.tv_sparkline_label, fallbackLabel)
+        views.setViewVisibility(R.id.layout_sparkline, View.GONE)
+        views.setViewVisibility(R.id.layout_normal_content, View.VISIBLE)
+        views.setTextViewText(
+            R.id.tv_route_label,
+            nextPair?.let { "${it.originName} → ${it.destinationName}" } ?: "Next Train"
+        )
+        views.setTextViewText(R.id.tv_last_updated, "")
+        views.setTextViewText(R.id.tv_primary_minutes, "--")
+        views.setTextViewText(R.id.tv_primary_time, "--:--")
+        views.setViewVisibility(R.id.tv_secondary_1, View.INVISIBLE)
+        views.setViewVisibility(R.id.tv_secondary_separator, View.INVISIBLE)
+        views.setViewVisibility(R.id.tv_secondary_2, View.INVISIBLE)
+        views.setViewVisibility(R.id.tv_no_trains, View.VISIBLE)
+        views.setTextViewText(
+            R.id.tv_no_trains,
+            nextPair?.let { "Active ${it.activeFrom}–${it.activeTo}" } ?: "No routes configured"
+        )
         applyTapActions(context, views, widgetId)
         manager.updateAppWidget(widgetId, views)
 
         CommuteNotificationManager.clear(context)
 
+        // Upgrade to sparkline only when the server has history data ready.
         scope.launch {
             val client = PtvApiClient(prefs.devId, prefs.apiKey)
             val history = client.getDelayHistory(prefs.serverUrl)
