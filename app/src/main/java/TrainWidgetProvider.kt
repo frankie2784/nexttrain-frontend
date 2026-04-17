@@ -237,10 +237,14 @@ class TrainWidgetProvider : AppWidgetProvider() {
         widgetId: Int,
         prefs: WidgetPrefs
     ) {
-        // Show sparkline container immediately (empty); fill in bitmap asynchronously.
+        val nextPair = prefs.getOdPairs().firstOrNull()
+        val fallbackLabel = nextPair?.let { "Active\n${it.activeFrom}–${it.activeTo}" } ?: "Idle"
+
+        // Show sparkline container with fallback label immediately.
         val views = RemoteViews(context.packageName, R.layout.widget_layout)
         views.setViewVisibility(R.id.layout_normal_content, View.GONE)
         views.setViewVisibility(R.id.layout_sparkline, View.VISIBLE)
+        views.setTextViewText(R.id.tv_sparkline_label, fallbackLabel)
         applyTapActions(context, views, widgetId)
         manager.updateAppWidget(widgetId, views)
 
