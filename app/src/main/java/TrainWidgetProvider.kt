@@ -112,7 +112,7 @@ class TrainWidgetProvider : AppWidgetProvider() {
 
         // If pairs are configured but none are currently active, show sparkline idle state.
         if (activePairNow == null && prefs.getOdPairs().isNotEmpty()) {
-            showIdleState(context, manager, widgetId, prefs)
+            showIdleState(context, manager, widgetId, prefs, activePair)
             return
         }
 
@@ -235,18 +235,14 @@ class TrainWidgetProvider : AppWidgetProvider() {
         context: Context,
         manager: AppWidgetManager,
         widgetId: Int,
-        prefs: WidgetPrefs
+        prefs: WidgetPrefs,
+        selectedPair: OdPair
     ) {
-        val nextPair = prefs.getOdPairs().firstOrNull()
-
         // Always render normal content first — guaranteed something is visible.
         val views = RemoteViews(context.packageName, R.layout.widget_layout)
         views.setViewVisibility(R.id.layout_sparkline, View.GONE)
         views.setViewVisibility(R.id.layout_normal_content, View.VISIBLE)
-        views.setTextViewText(
-            R.id.tv_route_label,
-            nextPair?.let { "${it.originName} → ${it.destinationName}" } ?: "Next Train"
-        )
+        views.setTextViewText(R.id.tv_route_label, "${selectedPair.originName} → ${selectedPair.destinationName}")
         views.setTextViewText(R.id.tv_last_updated, "")
         views.setTextViewText(R.id.tv_primary_minutes, "--")
         views.setTextViewText(R.id.tv_primary_time, "--:--")
@@ -254,10 +250,7 @@ class TrainWidgetProvider : AppWidgetProvider() {
         views.setViewVisibility(R.id.tv_secondary_separator, View.INVISIBLE)
         views.setViewVisibility(R.id.tv_secondary_2, View.INVISIBLE)
         views.setViewVisibility(R.id.tv_no_trains, View.VISIBLE)
-        views.setTextViewText(
-            R.id.tv_no_trains,
-            nextPair?.let { "Active ${it.activeFrom}–${it.activeTo}" } ?: "No routes configured"
-        )
+        views.setTextViewText(R.id.tv_no_trains, "Active ${selectedPair.activeFrom}–${selectedPair.activeTo}")
         applyTapActions(context, views, widgetId)
         manager.updateAppWidget(widgetId, views)
 
