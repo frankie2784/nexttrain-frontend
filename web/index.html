@@ -227,8 +227,6 @@ const API_URL = '__API_URL__';
 const API_KEY = '__API_KEY__';
 const HEADERS = API_KEY ? { 'X-Api-Key': API_KEY } : {};
 
-// ── Colour helpers (matches Android widget exactly) ─────────────────────
-
 function lerp(a, b, t) { return a.map((c, i) => Math.round(c + (b[i] - c) * t)); }
 function rgb([r, g, b]) { return `rgb(${r},${g},${b})`; }
 
@@ -243,14 +241,11 @@ function delayColour(minDelay) {
     return RED;
 }
 
-// ── Sparkline ─────────────────────────────────────────────────────────
-
 function drawSparkline(points) {
     const svg = document.getElementById('sparkline-svg');
     svg.innerHTML = '';
     if (!points || points.length < 2) return;
 
-    // Oldest point first (left → right)
     const sorted = [...points].sort((a, b) => b.seconds_ago - a.seconds_ago);
     const delays = sorted.map(p => p.total_delay_seconds / 60);
     const maxD = Math.max(...delays, 5);
@@ -273,7 +268,6 @@ function drawSparkline(points) {
         svg.appendChild(line);
     }
 
-    // Update big stat + status dot
     const latest = delays[delays.length - 1];
     const colour = rgb(delayColour(latest));
     document.getElementById('delay-value').textContent = Math.round(latest);
@@ -293,8 +287,6 @@ async function fetchSparkline() {
         document.getElementById('sparkline-updated').textContent = `Error: ${e.message}`;
     }
 }
-
-// ── Stations ──────────────────────────────────────────────────────────
 
 async function loadStations() {
     const sel = document.getElementById('station-select');
@@ -318,8 +310,6 @@ async function loadStations() {
         sel.innerHTML = `<option value="">Error: ${e.message}</option>`;
     }
 }
-
-// ── Departures ─────────────────────────────────────────────────────────────
 
 function badgeInfo(delayMin) {
     if (delayMin < -1) return ['badge-early',      `${Math.abs(delayMin)}m early`];
@@ -363,14 +353,10 @@ async function fetchDepartures(stopId) {
     }
 }
 
-// ── Event wiring ────────────────────────────────────────────────────────────
-
 document.getElementById('station-select').addEventListener('change', e => {
     const v = e.target.value;
     if (v) { localStorage.setItem('nexttrain_station', v); fetchDepartures(v); }
 });
-
-// ── Boot ──────────────────────────────────────────────────────────────────
 
 fetchSparkline();
 loadStations();
