@@ -73,7 +73,7 @@
         #sparkline-svg {
             flex: 1;
             display: block;
-            height: 64px;
+            height: 80px;
             overflow: visible;
         }
         .delay-stat { text-align: right; min-width: 60px; }
@@ -235,42 +235,158 @@ const AMBER = [255, 193, 7];
 const RED   = [244, 67, 54];
 
 function delayColour(minDelay) {
-    if (minDelay <= 0)   return GREEN;
-    if (minDelay < 50)   return lerp(GREEN, AMBER, minDelay / 50);
-    if (minDelay < 100)  return lerp(AMBER, RED, (minDelay - 50) / 50);
-    return RED;
+    if (minDelay <= 0) return GREEN;
+    if (minDelay < 50) return lerp(GREEN, AMBER, minDelay / 50);
+    if (minDelay < 100) return lerp(AMBER, RED, (minDelay - 50) / 50);
+    if (minDelay < 150) return RED;
+    if (minDelay < 200) return lerp(RED, [156, 39, 176], (minDelay - 150) / 50);
+    return [156, 39, 176];
+}
+
+function rgba(color, alpha) {
+    return `rgba(${color[0]},${color[1]},${color[2]},${alpha})`;
+}
+
+function createSvgElement(tag, attrs) {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    Object.entries(attrs).forEach(([key, value]) => el.setAttribute(key, String(value)));
+    return el;
+}
+
+function drawTimeTicks(svg, sorted, drawW, W, H, pad) {
+    const now = new Date();
+    const oldestSecondsAgo = sorted[0].seconds_ago;
+    const newestSecondsAgo = sorted[sorted.length - 1].seconds_ago;
+    const range = oldestSecondsAgo - newestSecondsAgo;
+    if (range <= 0) return;
+
+    const minTime = new Date(now.getTime() - oldestSecondsAgo * 1000);
+    const maxTime = new Date(now.getTime() - newestSecondsAgo * 1000);
+
+    const candidateTimes = [];
+    const cursor = new Date(minTime);
+    cursor.setHours(0, 0, 0, 0);
+    cursor.setDate(cursor.getDate() - 1);
+    const endDay = new Date(now);
+    endDay.setDate(endDay.getDate() + 1);
+    endDay.setHours(0, 0, 0, 0);
+
+    while (cursor <= endDay) {
+        [0, 6, 12, 18].forEach(hour => {
+            const tick = new Date(cursor);
+            tick.setHours(hour, 0, 0, 0);
+            candidateTimes.push(tick);
+        });
+        cursor.setDate(cursor.getDate() + 1);
+    }
+
+    for (const tickTime of candidateTimes) {
+        if (tickTime < minTime || tickTime > maxTime) continue;
+        const secondsAgo = Math.round((now.getTime() - tickTime.getTime()) / 1000);
+        const x = ((oldestSecondsAgo - secondsAgo) / range) * drawW;
+        const label = tickTime.getHours() === 0 ? '12am' : tickTime.getHours() === 12 ? '12pm' : null;
+        const y0 = H - pad - (label ? 14 : 8);
+        const y1 = H - pad - (label ? 8 : 4);
+
+        svg.appendChild(createSvgElement('line', {
+            x1: x,
+            y1: y0,
+            x2: x,
+            y2: y1,
+            stroke: rgba([255, 255, 255], 0.45),
+            'stroke-width': 2,
+        }));
+
+        if (label) {
+            svg.appendChild(createSvgElement('text', {
+                x: x,
+                y: H - pad - 2,
+                fill: rgba([255, 255, 255], 0.71),
+                'font-size': 10,
+                'text-anchor': 'middle',
+                'alignment-baseline': 'baseline',
+            })).textContent = label;
+        }
+    }
 }
 
 function drawSparkline(points) {
     const svg = document.getElementById('sparkline-svg');
     svg.innerHTML = '';
-    if (!points || points.length < 2) return;
+    if (!points || points.length < 1) return;
 
     const sorted = [...points].sort((a, b) => b.seconds_ago - a.seconds_ago);
     const delays = sorted.map(p => p.total_delay_seconds / 60);
-    const maxD = Math.max(...delays, 5);
+    const latest = delays[delays.length - 1];
+    const labelText = Number.isFinite(latest) ? `${Math.round(latest)}m` : '--';
+
+    const W = 600;
+    const H = 80;
+    const pad = 4;
+    const rightPad = W * (labelText.length <= 3 ? 0.2 : 0.24);
+    const drawW = W - rightPad;
+    const drawH = H - 2 * pad;
+
+    const maxD = Math.max(...delays);
     const n = delays.length;
-    const W = 600, H = 80;
 
-    for (let i = 0; i < n - 1; i++) {
-        const x0 = (i / (n - 1)) * W;
-        const y0 = H - (delays[i]     / maxD) * H;
-        const x1 = ((i + 1) / (n - 1)) * W;
-        const y1 = H - (delays[i + 1] / maxD) * H;
-        const mid = (delays[i] + delays[i + 1]) / 2;
+    const xFor = i => (i / (n - 1)) * drawW;
+    const yFor = d => pad + drawH * (1 - Math.max(d, 0) / maxD);
 
-        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        line.setAttribute('x1', x0); line.setAttribute('y1', y0);
-        line.setAttribute('x2', x1); line.setAttribute('y2', y1);
-        line.setAttribute('stroke', rgb(delayColour(mid)));
-        line.setAttribute('stroke-width', '4');
-        line.setAttribute('stroke-linecap', 'round');
-        svg.appendChild(line);
+    const addLine = (x1, y1, x2, y2, colour) => {
+        svg.appendChild(createSvgElement('line', {
+            x1,
+            y1,
+            x2,
+            y2,
+            stroke: rgb(colour),
+            'stroke-width': 3,
+            'stroke-linecap': 'round',
+            'stroke-linejoin': 'round',
+        }));
+    };
+
+    const addCircle = (cx, cy, r, fill) => {
+        svg.appendChild(createSvgElement('circle', {
+            cx,
+            cy,
+            r,
+            fill,
+        }));
+    };
+
+    if (n < 2 || maxD <= 0) {
+        const flatY = H - pad;
+        addLine(0, flatY, drawW, flatY, rgb(delayColour(0)));
+        if (n < 2) {
+            document.getElementById('delay-value').textContent = Number.isFinite(latest) ? Math.round(latest) : '--';
+            document.getElementById('delay-value').style.color = rgb(delayColour(latest || 0));
+            document.getElementById('status-dot').style.background = rgb(delayColour(latest || 0));
+        }
+        return;
     }
 
-    const latest = delays[delays.length - 1];
-    const colour = rgb(delayColour(latest));
+    drawTimeTicks(svg, sorted, drawW, W, H, pad);
+
+    for (let i = 0; i < n - 1; i++) {
+        const x0 = xFor(i);
+        const y0 = yFor(delays[i]);
+        const x1 = xFor(i + 1);
+        const y1 = yFor(delays[i + 1]);
+        const mid = (delays[i] + delays[i + 1]) / 2;
+        addLine(x0, y0, x1, y1, delayColour(mid));
+    }
+
+    const tipX = xFor(n - 1);
+    const tipY = yFor(latest);
+    const tipColour = delayColour(latest);
+
+    addCircle(tipX, tipY, 20, rgba(tipColour, 0.14));
+    addCircle(tipX, tipY, 12, rgba(tipColour, 0.28));
+    addCircle(tipX, tipY, 5, rgb(tipColour));
+
     document.getElementById('delay-value').textContent = Math.round(latest);
+    const colour = rgb(tipColour);
     document.getElementById('delay-value').style.color = colour;
     document.getElementById('status-dot').style.background = colour;
 }
