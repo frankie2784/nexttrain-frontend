@@ -1,156 +1,142 @@
-# Next Train – Melbourne Lock Screen Widget
+# NextTrain — Web Frontend
 
-An Android home/lock screen widget for Pixel 6 (Android 13+) that shows real-time
-Melbourne Metro train departures using the PTV Timetable API v3.
+A real-time Melbourne Metro train dashboard hosted on GitHub Pages. Shows network delay trends and per-station departures with live delay info.
+
+**Architecture:** Web frontend + separate [server repo](https://github.com/frankie2784/NextTrain-Server).
 
 ---
 
 ## Features
 
-- **Next 3 departures** from your chosen origin station
-- **Multiple OD pairs** — e.g. inbound in the morning, outbound in the afternoon
-- **Active time windows** — widget only shows trains during your configured hours
-- **Real-time updates** every 60 seconds via AlarmManager (fires even in Doze mode)
-- **Delay/early badges** from PTV real-time estimated departure data
-- **Lock screen placement** supported on Pixel devices running Android 13+
+- **Network delay sparkline** — 30-minute historical chart showing total network delay, colour-coded (green→amber→red)
+- **Per-station departures** — search stations, view next trains with arrival times and delay badges
+- **Auto-refresh** — sparkline every 30 s, departures every 60 s
+- **Dark theme** — designed for at-a-glance transit info
+- **No build step** — vanilla HTML/JS/CSS, deploys instantly to GitHub Pages
 
 ---
 
-## Prerequisites
+## Architecture
 
-| Tool | Version |
-|------|---------|
-| Android Studio | Hedgehog (2023.1.1) or later |
-| JDK | 17 |
-| Android SDK | API 36 (Android 16) |
-| Pixel 6 | Android 13 minimum (for lock screen widget support) |
-
----
-
-## Step 1 — Get PTV API Credentials
-
-1. Go to https://www.ptv.vic.gov.au/footer/data-and-reporting/datasets/ptv-timetable-api/
-2. Fill in the form to request a **Developer ID** and **API Key** (free, approved within a few days).
-3. Keep both values handy — you'll enter them in the app's settings screen.
-
-> The PTV API uses HMAC-SHA1 request signing. Every API call is automatically
-> signed by `PtvApiClient.kt` using your key. You never need to handle this manually.
-
----
-
-## Step 2 — Build & Install
-
-```bash
-# Clone / open in Android Studio, then:
-./gradlew assembleDebug
-adb install app/build/outputs/apk/debug/app-debug.apk
+```
+Browser (GitHub Pages)
+  │  fetch() + X-Api-Key header
+  ▼
+Tailscale Funnel (public HTTPS)
+  │
+  ▼
+RPi4 Flask server (port 5050)
 ```
 
-Or use **Run ▶** in Android Studio with your Pixel 6 connected.
+The web frontend is static — all logic is in the separate [NextTrain-Server](https://github.com/frankie2784/NextTrain-Server) repo.
 
 ---
 
-## Step 3 — Add the Widget
+## One-time Setup
 
-### Home screen
-1. Long-press on your home screen → **Widgets**
-2. Find **Next Train** and drag it onto the screen
-3. The configuration screen opens automatically
+### 1. Fork & Clone This Repo
 
-### Lock screen (Pixel, Android 13+)
-1. Long-press the lock screen → **Customize** → **Add Widget**
-2. Select **Next Train**
-3. If prompted, open the app to complete configuration
+```bash
+gh repo fork frankie2784/NextTrain --clone
+cd NextTrain
+git checkout claude/cloudflare-tunnel-cors  # or merge to main
+```
 
----
+### 2. Set Up the Server (separate repo)
 
-## Step 4 — Configure
+Follow the [NextTrain-Server](https://github.com/frankie2784/NextTrain-Server) README to:
+- Install Docker Compose
+- Set `PTV_API_KEY` in `.env`
+- Run `docker compose up -d`
 
-In the configuration screen:
+### 3. Expose via Tailscale Funnel
 
-1. **Enter your PTV Developer ID and API Key**, then tap **Save Credentials**
-2. Tap **+** to add a route:
-   - Choose **origin** and **destination** station from the dropdown (all Melbourne Metro stations listed)
-   - Set the **active time window** (e.g. 06:00–10:00 for the morning)
-   - Give it a label (e.g. "Morning commute")
-3. Add a second route for the return journey (e.g. 16:00–20:00, Jolimont → Fairfield)
-4. Tap **Save & Update Widget**
+On the RPi:
+
+```bash
+sudo tailscale funnel 5050
+# Prints: https://frankipi.tail-abc123.ts.net
+```
+
+Copy that URL — you'll need it next.
+
+### 4. Configure GitHub Pages Deployment
+
+Go to **Settings → Secrets and variables → Actions** and add:
+
+| Secret | Value |
+|--------|-------|
+| `NEXTTRAIN_API_URL` | The Tailscale Funnel URL from step 3 |
+| `NEXTTRAIN_API_KEY` | Any long random string (must match `NEXTTRAIN_API_KEY` in the server `.env`) |
+
+### 5. Enable GitHub Pages
+
+Go to **Settings → Pages** and set:
+- **Source:** GitHub Actions
+
+### 6. Deploy
+
+Push or merge to `main` — the **Deploy to GitHub Pages** action runs automatically.
+
+Visit `https://<your-github-username>.github.io/NextTrain` — the page loads and calls the API via the Tailscale Funnel.
 
 ---
 
 ## How It Works
 
-```
-AlarmScheduler
-  └── fires every 60s via AlarmManager.setExactAndAllowWhileIdle()
-        └── AlarmReceiver.onReceive()
-              └── broadcasts ACTION_REFRESH
-                    └── TrainWidgetProvider.onReceive()
-                          └── checks which OdPair is active right now
-                                └── PtvApiClient.getDeparturesFromServer()
-                                      └── calls RPi4 GTFS server
-                                      └── server merges static + RT data
-                                      └── renders RemoteViews with top 3
-```
+**On page load:**
+1. Fetch `/stations` → populate station dropdown
+2. Fetch `/delay_history` → draw sparkline
+3. On station select → fetch `/departures?origin_gtfs_id=...`
 
-### Key classes
+**Auto-refresh:**
+- Sparkline: every 30 s
+- Departures: every 60 s (if a station is selected)
 
-| File | Purpose |
-|------|---------|
-| `TrainWidgetProvider.kt` | AppWidgetProvider; renders RemoteViews |
-| `AlarmScheduler.kt` | Schedules/cancels per-minute exact alarms |
-| `AlarmReceiver.kt` | Receives alarm, triggers refresh + reschedules |
-| `PtvApiClient.kt` | HMAC-SHA1 signing + PTV API v3 calls |
-| `WidgetPrefs.kt` | SharedPreferences: credentials + OD pairs |
-| `ConfigActivity.kt` | Settings UI: credentials + add/edit/delete OD pairs |
-| `Models.kt` | Data classes: `OdPair`, `Departure`, `MelbourneStations` |
+**Security:**
+- All API calls include `X-Api-Key` header
+- The server rejects requests without the key (except `/health`)
+- Only the API key + Tailscale Funnel protect the backend
 
 ---
 
-## Finding Stop IDs
-
-All Melbourne Metro stations are pre-loaded in `MelbourneStations.ALL` in `Models.kt`.
-If you need to verify or add a stop ID, call the PTV API directly:
+## Files
 
 ```
-GET /v3/stops/route_type/0
+web/
+  └── index.html          Single-file frontend (no npm, no build)
+.github/
+  └── workflows/
+      └── pages.yml       Injects secrets, deploys to GitHub Pages
 ```
-
-Or search by name:
-```
-GET /v3/search/{search_term}?route_types=0
-```
-
-Both endpoints require the same HMAC-SHA1 signing — you can use the
-[PTV API Explorer](https://timetableapi.ptv.vic.gov.au/swagger/ui/index) with your credentials.
 
 ---
 
-## Known Limitations & Notes
+## Local Development
 
-- **Direction filtering**: The widget fetches all departures from the origin stop and
-  sorts by time. For a more precise filter (only services that call at the destination),
-  add a `/v3/stops/stop/{stop_id}/route_type/0` check against the run's stop list.
-  This is omitted here to keep API calls to 1 per update.
+Edit `web/index.html` and test in a browser with hardcoded secrets:
 
-- **Exact alarms**: Android 12+ requires `SCHEDULE_EXACT_ALARM` permission. On some
-  devices you may need to manually grant this under **Settings → Apps → Special app access
-  → Alarms & reminders**.
+```javascript
+const API_URL = 'http://localhost:5050';  // or your Tailscale Funnel URL
+const API_KEY = 'your-api-key';
+```
 
-- **Battery**: The widget uses `setExactAndAllowWhileIdle` only during configured active
-  windows. Outside those windows, no alarms fire.
+Then:
+```bash
+# On RPi
+docker compose up -d
 
-- **Lock screen on Android <13**: Lock screen widgets aren't supported. The widget will
-  still work perfectly on the home screen.
+# On your machine (if on the same network)
+python3 -m http.server 8000 -d web
+# Visit http://localhost:8000
+```
 
 ---
 
-## Permissions
+## Server Deployment
 
-| Permission | Why |
-|-----------|-----|
-| `INTERNET` | PTV API calls |
-| `RECEIVE_BOOT_COMPLETED` | Reschedule alarms after reboot |
-| `SCHEDULE_EXACT_ALARM` / `USE_EXACT_ALARM` | Per-minute updates |
-
-| `WAKE_LOCK` | Keep CPU awake during alarm-triggered fetches |
+See the separate [NextTrain-Server](https://github.com/frankie2784/NextTrain-Server) repo for:
+- Flask app + GTFS processing
+- Docker Compose setup
+- Cloudflare Tunnel alternative (if you prefer)
+- Systemd service setup

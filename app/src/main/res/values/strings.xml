@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">Next Train</string>
-    <string name="widget_description">Shows the next 3 Melbourne Metro train departures from your station</string>
-</resources>
