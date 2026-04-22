@@ -4,10 +4,12 @@ services:
     container_name: next-train-server
     restart: unless-stopped
     ports:
-      - "5050:5050"
+      - "5050:5050"   # kept for local Android widget access
     environment:
       - PTV_API_KEY=${PTV_API_KEY:-}
       - PORT=5050
+      - NEXTTRAIN_API_KEY=${NEXTTRAIN_API_KEY:-}
+      - FRONTEND_ORIGIN=${FRONTEND_ORIGIN:-}
     volumes:
       - gtfs-data:/app/data
     healthcheck:
@@ -15,6 +17,19 @@ services:
       interval: 60s
       timeout: 10s
       retries: 3
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: nexttrain-tunnel
+    restart: unless-stopped
+    command: tunnel --config /etc/cloudflared/config.yml run
+    volumes:
+      - ./cloudflared:/etc/cloudflared          # config.yml lives here
+      - ${CF_CREDS_DIR:-~/.cloudflared}:/root/.cloudflared:ro  # tunnel creds + cert.pem
+    depends_on:
+      - next-train-server
+    profiles:
+      - tunnel   # only starts with: docker compose --profile tunnel up
 
 volumes:
   gtfs-data:

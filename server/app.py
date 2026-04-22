@@ -10,13 +10,17 @@ GET /departures?stop_id=<int>&direction_id=<int>&max_results=<int>
     Returns upcoming departures with real-time delay merged in.
 
 GET /health
-    Simple health-check.
+    Simple health-check (no API key required).
 
 Configuration
 -------------
 Set environment variables (or create a .env file next to this script):
-    PTV_API_KEY   – Your PTV / Open Data API key (used for GTFS-RT header)
-    PORT          – Server port (default 5050)
+    PTV_API_KEY       – Your PTV / Open Data API key (used for GTFS-RT header)
+    PORT              – Server port (default 5050)
+    NEXTTRAIN_API_KEY – Shared secret for web frontend auth (optional;
+                        if unset the API is open — fine for local-only use)
+    FRONTEND_ORIGIN   – CORS origin for the web frontend, e.g.
+                        https://nexttrain.netlify.app (optional)
 """
 
 import logging
@@ -27,6 +31,7 @@ from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 
 from gtfs_realtime import gtfs_rt
 from gtfs_static import gtfs_static
@@ -44,13 +49,31 @@ logger = logging.getLogger(__name__)
 API_KEY = os.environ.get("PTV_API_KEY", "")
 PORT = int(os.environ.get("PORT", "5050"))
 LOCAL_TZ = ZoneInfo("Australia/Melbourne")
+_NEXTTRAIN_API_KEY = os.environ.get("NEXTTRAIN_API_KEY", "")
+_FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "")
 
 if not API_KEY:
     logger.warning("PTV_API_KEY not set — GTFS-RT delays will be unavailable")
+if not _NEXTTRAIN_API_KEY:
+    logger.warning("NEXTTRAIN_API_KEY not set — API is open (fine for local use)")
 
 # ── Flask app ──────────────────────────────────────────────────────────────
 
 app = Flask(__name__)
+
+if _FRONTEND_ORIGIN:
+    CORS(app, origins=[_FRONTEND_ORIGIN], supports_credentials=False)
+
+
+@app.before_request
+def check_api_key():
+    # /health is always open — Docker healthcheck and cloudflared use it
+    if request.path == "/health":
+        return
+    if not _NEXTTRAIN_API_KEY:
+        return  # key not configured → open (dev / local mode)
+    if request.headers.get("X-Api-Key") != _NEXTTRAIN_API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
 
 
 @app.route("/health")
