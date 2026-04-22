@@ -1,0 +1,43 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths: [web/**]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Inject API config
+        env:
+          NEXTTRAIN_API_URL: ${{ secrets.NEXTTRAIN_API_URL }}
+          NEXTTRAIN_API_KEY: ${{ secrets.NEXTTRAIN_API_KEY }}
+        run: |
+          mkdir -p _site
+          sed \
+            -e "s|__API_URL__|${NEXTTRAIN_API_URL}|g" \
+            -e "s|__API_KEY__|${NEXTTRAIN_API_KEY}|g" \
+            web/index.html > _site/index.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

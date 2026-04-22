@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NextTrain — Melbourne Metro</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg:       #0e1014;
+            --surface:  #1a1d24;
+            --surface2: #22262f;
+            --text:     #e2e4e9;
+            --text-dim: #7a7e96;
+            --green:    #4CAF50;
+            --amber:    #FFC107;
+            --red:      #F44336;
+            --blue:     #64b5f6;
+            --radius:   12px;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
+            padding: 16px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 0 20px;
+        }
+        header h1 {
+            font-size: 1.05rem;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
+        #status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--text-dim);
+            flex-shrink: 0;
+            transition: background 0.5s;
+        }
+
+        .card {
+            background: var(--surface);
+            border-radius: var(--radius);
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+        .card-label {
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-dim);
+            margin-bottom: 14px;
+        }
+
+        /* ── Sparkline hero ── */
+        .sparkline-row {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        #sparkline-svg {
+            flex: 1;
+            display: block;
+            height: 64px;
+            overflow: visible;
+        }
+        .delay-stat { text-align: right; min-width: 60px; }
+        .delay-stat .value {
+            font-size: 2rem;
+            font-weight: 700;
+            line-height: 1;
+            transition: color 0.5s;
+        }
+        .delay-stat .unit {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            margin-top: 2px;
+        }
+        .sparkline-meta {
+            font-size: 0.68rem;
+            color: var(--text-dim);
+            margin-top: 10px;
+            text-align: right;
+        }
+
+        /* ── Station picker ── */
+        #station-select {
+            width: 100%;
+            background: var(--surface2);
+            color: var(--text);
+            border: none;
+            border-radius: 8px;
+            padding: 11px 12px;
+            font-size: 0.93rem;
+            cursor: pointer;
+            outline: none;
+            margin-bottom: 12px;
+            appearance: none;
+            -webkit-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237a7e96' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 32px;
+        }
+        #station-select option { background: #22262f; }
+
+        /* ── Departures ── */
+        #departures-list { display: flex; flex-direction: column; gap: 6px; }
+
+        .dep-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: var(--surface2);
+            border-radius: 8px;
+        }
+        .dep-time {
+            font-size: 1.05rem;
+            font-weight: 600;
+            width: 50px;
+            flex-shrink: 0;
+        }
+        .dep-mins {
+            font-size: 0.78rem;
+            color: var(--text-dim);
+            width: 40px;
+            flex-shrink: 0;
+        }
+        .dep-badge {
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 3px 7px;
+            border-radius: 5px;
+            width: 64px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .dep-headsign {
+            flex: 1;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .dep-platform {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            flex-shrink: 0;
+        }
+
+        .badge-ontime   { background: #1c341c; color: var(--green); }
+        .badge-late     { background: #332d00; color: var(--amber); }
+        .badge-very-late{ background: #341c1a; color: var(--red);   }
+        .badge-early    { background: #162434; color: var(--blue);  }
+
+        .placeholder-msg {
+            color: var(--text-dim);
+            font-size: 0.85rem;
+            text-align: center;
+            padding: 16px 0;
+        }
+        .error-msg {
+            color: var(--red);
+            font-size: 0.8rem;
+            padding: 8px 0;
+        }
+
+        #status-bar {
+            font-size: 0.68rem;
+            color: var(--text-dim);
+            text-align: center;
+            padding: 6px 0 12px;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div id="status-dot"></div>
+    <h1>NextTrain &mdash; Melbourne Metro</h1>
+</header>
+
+<!-- Hero: network delay sparkline -->
+<div class="card">
+    <div class="card-label">Network Delay &mdash; last 30 min</div>
+    <div class="sparkline-row">
+        <svg id="sparkline-svg" viewBox="0 0 600 80" preserveAspectRatio="none"></svg>
+        <div class="delay-stat">
+            <div class="value" id="delay-value">--</div>
+            <div class="unit">min delay</div>
+        </div>
+    </div>
+    <div class="sparkline-meta" id="sparkline-updated">Loading&hellip;</div>
+</div>
+
+<!-- Departures -->
+<div class="card">
+    <div class="card-label">Departures</div>
+    <select id="station-select">
+        <option value="">Loading stations&hellip;</option>
+    </select>
+    <div id="departures-list">
+        <div class="placeholder-msg">Select a station above</div>
+    </div>
+</div>
+
+<div id="status-bar"></div>
+
+<script>
+'use strict';
+
+const API_URL = '__API_URL__';
+const API_KEY = '__API_KEY__';
+const HEADERS = API_KEY ? { 'X-Api-Key': API_KEY } : {};
+
+// ── Colour helpers (matches Android widget exactly) ───────────────────────
+
+function lerp(a, b, t) { return a.map((c, i) => Math.round(c + (b[i] - c) * t)); }
+function rgb([r, g, b]) { return `rgb(${r},${g},${b})`; }
+
+const GREEN = [76, 175, 80];
+const AMBER = [255, 193, 7];
+const RED   = [244, 67, 54];
+
+function delayColour(minDelay) {
+    if (minDelay <= 0)   return GREEN;
+    if (minDelay < 50)   return lerp(GREEN, AMBER, minDelay / 50);
+    if (minDelay < 100)  return lerp(AMBER, RED, (minDelay - 50) / 50);
+    return RED;
+}
+
+// ── Sparkline ─────────────────────────────────────────────────────────────
+
+function drawSparkline(points) {
+    const svg = document.getElementById('sparkline-svg');
+    svg.innerHTML = '';
+    if (!points || points.length < 2) return;
+
+    // Oldest point first (left → right)
+    const sorted = [...points].sort((a, b) => b.seconds_ago - a.seconds_ago);
+    const delays = sorted.map(p => p.total_delay_seconds / 60);
+    const maxD = Math.max(...delays, 5);
+    const n = delays.length;
+    const W = 600, H = 80;
+
+    for (let i = 0; i < n - 1; i++) {
+        const x0 = (i / (n - 1)) * W;
+        const y0 = H - (delays[i]     / maxD) * H;
+        const x1 = ((i + 1) / (n - 1)) * W;
+        const y1 = H - (delays[i + 1] / maxD) * H;
+        const mid = (delays[i] + delays[i + 1]) / 2;
+
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', x0); line.setAttribute('y1', y0);
+        line.setAttribute('x2', x1); line.setAttribute('y2', y1);
+        line.setAttribute('stroke', rgb(delayColour(mid)));
+        line.setAttribute('stroke-width', '4');
+        line.setAttribute('stroke-linecap', 'round');
+        svg.appendChild(line);
+    }
+
+    // Update big stat + status dot
+    const latest = delays[delays.length - 1];
+    const colour = rgb(delayColour(latest));
+    document.getElementById('delay-value').textContent = Math.round(latest);
+    document.getElementById('delay-value').style.color = colour;
+    document.getElementById('status-dot').style.background = colour;
+}
+
+async function fetchSparkline() {
+    try {
+        const res = await fetch(`${API_URL}/delay_history`, { headers: HEADERS });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        drawSparkline(data.points);
+        document.getElementById('sparkline-updated').textContent =
+            `Updated ${new Date().toLocaleTimeString('en-AU', { timeStyle: 'short' })}`;
+    } catch (e) {
+        document.getElementById('sparkline-updated').textContent = `Error: ${e.message}`;
+    }
+}
+
+// ── Stations ──────────────────────────────────────────────────────────────
+
+async function loadStations() {
+    const sel = document.getElementById('station-select');
+    try {
+        const res = await fetch(`${API_URL}/stations`, { headers: HEADERS });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        sel.innerHTML = '<option value="">— Pick a station —</option>';
+        for (const s of (data.stations || [])) {
+            const opt = document.createElement('option');
+            opt.value = s.station_gtfs_id;
+            opt.textContent = s.display_name;
+            sel.appendChild(opt);
+        }
+        const saved = localStorage.getItem('nexttrain_station');
+        if (saved && sel.querySelector(`option[value="${saved}"]`)) {
+            sel.value = saved;
+            fetchDepartures(saved);
+        }
+    } catch (e) {
+        sel.innerHTML = `<option value="">Error: ${e.message}</option>`;
+    }
+}
+
+// ── Departures ────────────────────────────────────────────────────────────
+
+function badgeInfo(delayMin) {
+    if (delayMin < -1) return ['badge-early',      `${Math.abs(delayMin)}m early`];
+    if (delayMin <= 1) return ['badge-ontime',     'On time'];
+    if (delayMin <= 5) return ['badge-late',       `+${delayMin}m`];
+    return                    ['badge-very-late',  `+${delayMin}m`];
+}
+
+async function fetchDepartures(stopId) {
+    if (!stopId) return;
+    const list = document.getElementById('departures-list');
+    list.innerHTML = '<div class="placeholder-msg">Loading&hellip;</div>';
+    try {
+        const url = `${API_URL}/departures?origin_gtfs_id=${encodeURIComponent(stopId)}&max_results=6`;
+        const res = await fetch(url, { headers: HEADERS });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const deps = data.departures || [];
+
+        if (deps.length === 0) {
+            list.innerHTML = '<div class="placeholder-msg">No upcoming departures</div>';
+            return;
+        }
+
+        list.innerHTML = deps.map(d => {
+            const time     = d.estimated_time || d.scheduled_time;
+            const delayMin = d.delay_minutes ?? 0;
+            const [bClass, bText] = badgeInfo(delayMin);
+            const minsText = d.minutes_until <= 1 ? 'Now' : `${d.minutes_until}m`;
+            const platform = d.platform ? `Plat&nbsp;${d.platform}` : '';
+            return `<div class="dep-row">
+                <span class="dep-time">${time}</span>
+                <span class="dep-mins">${minsText}</span>
+                <span class="dep-badge ${bClass}">${bText}</span>
+                <span class="dep-headsign">${d.trip_headsign || ''}</span>
+                <span class="dep-platform">${platform}</span>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        list.innerHTML = `<div class="error-msg">Failed to load departures: ${e.message}</div>`;
+    }
+}
+
+// ── Event wiring ──────────────────────────────────────────────────────────
+
+document.getElementById('station-select').addEventListener('change', e => {
+    const v = e.target.value;
+    if (v) { localStorage.setItem('nexttrain_station', v); fetchDepartures(v); }
+});
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+
+fetchSparkline();
+loadStations();
+
+setInterval(fetchSparkline, 30_000);
+setInterval(() => {
+    const v = document.getElementById('station-select').value;
+    if (v) fetchDepartures(v);
+}, 60_000);
+</script>
+</body>
+</html>
