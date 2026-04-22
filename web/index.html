@@ -227,7 +227,7 @@ const API_URL = '__API_URL__';
 const API_KEY = '__API_KEY__';
 const HEADERS = API_KEY ? { 'X-Api-Key': API_KEY } : {};
 
-// ── Colour helpers (matches Android widget exactly) ───────────────────────
+// ── Colour helpers (matches Android widget exactly) ─────────────────────
 
 function lerp(a, b, t) { return a.map((c, i) => Math.round(c + (b[i] - c) * t)); }
 function rgb([r, g, b]) { return `rgb(${r},${g},${b})`; }
@@ -243,7 +243,7 @@ function delayColour(minDelay) {
     return RED;
 }
 
-// ── Sparkline ─────────────────────────────────────────────────────────────
+// ── Sparkline ─────────────────────────────────────────────────────────
 
 function drawSparkline(points) {
     const svg = document.getElementById('sparkline-svg');
@@ -294,7 +294,7 @@ async function fetchSparkline() {
     }
 }
 
-// ── Stations ──────────────────────────────────────────────────────────────
+// ── Stations ──────────────────────────────────────────────────────────
 
 async function loadStations() {
     const sel = document.getElementById('station-select');
@@ -319,7 +319,7 @@ async function loadStations() {
     }
 }
 
-// ── Departures ────────────────────────────────────────────────────────────
+// ── Departures ─────────────────────────────────────────────────────────────
 
 function badgeInfo(delayMin) {
     if (delayMin < -1) return ['badge-early',      `${Math.abs(delayMin)}m early`];
@@ -363,7 +363,7 @@ async function fetchDepartures(stopId) {
     }
 }
 
-// ── Event wiring ──────────────────────────────────────────────────────────
+// ── Event wiring ────────────────────────────────────────────────────────────
 
 document.getElementById('station-select').addEventListener('change', e => {
     const v = e.target.value;
