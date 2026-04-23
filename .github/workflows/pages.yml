@@ -29,6 +29,11 @@ jobs:
           NEXTTRAIN_API_URL: ${{ secrets.NEXTTRAIN_API_URL }}
           NEXTTRAIN_API_KEY: ${{ secrets.NEXTTRAIN_API_KEY }}
         run: |
+          set -euo pipefail
+          if [ -z "${NEXTTRAIN_API_URL:-}" ]; then
+            echo "ERROR: NEXTTRAIN_API_URL is not set. Add it as a repository secret and re-run this workflow."
+            exit 1
+          fi
           mkdir -p _site
           sed \
             -e "s|__API_URL__|${NEXTTRAIN_API_URL}|g" \
