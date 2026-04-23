@@ -290,6 +290,54 @@ function createSvgElement(tag, attrs) {
     return el;
 }
 
+function smoothingWindowSeconds(totalSpanSeconds) {
+    if (totalSpanSeconds <= 60 * 60) return 2 * 60;
+    if (totalSpanSeconds <= 3 * 60 * 60) return 5 * 60;
+    if (totalSpanSeconds <= 6 * 60 * 60) return 10 * 60;
+    if (totalSpanSeconds <= 12 * 60 * 60) return 15 * 60;
+    return 30 * 60;
+}
+
+function smoothingWindowSecondsForPoint(secondsAgo, maxWindowSeconds) {
+    const minWindowSeconds = 2 * 60;
+    if (secondsAgo <= minWindowSeconds) return minWindowSeconds;
+    if (secondsAgo >= 60 * 60) return maxWindowSeconds;
+    const progression = (secondsAgo - minWindowSeconds) / (60 * 60 - minWindowSeconds);
+    return minWindowSeconds + Math.round((maxWindowSeconds - minWindowSeconds) * progression);
+}
+
+function smoothDelayHistory(sortedPoints) {
+    if (sortedPoints.length < 3) return sortedPoints;
+
+    const totalSpanSeconds = sortedPoints[0].seconds_ago;
+    const smoothingWindowSecondsValue = smoothingWindowSeconds(totalSpanSeconds);
+    const n = sortedPoints.length;
+    const smoothed = sortedPoints.map(point => ({ ...point }));
+
+    for (let i = 0; i < n; i++) {
+        const center = sortedPoints[i].seconds_ago;
+        const windowSeconds = smoothingWindowSecondsForPoint(center, smoothingWindowSecondsValue);
+        const halfWindow = windowSeconds / 2;
+        const windowStart = Math.max(0, center - halfWindow);
+        const windowEnd = center + halfWindow;
+
+        let sum = 0;
+        let count = 0;
+        for (let j = 0; j < n; j++) {
+            if (sortedPoints[j].seconds_ago >= windowStart && sortedPoints[j].seconds_ago <= windowEnd) {
+                sum += sortedPoints[j].total_delay_minutes;
+                count += 1;
+            }
+        }
+
+        if (count > 0) {
+            smoothed[i].total_delay_minutes = sum / count;
+        }
+    }
+
+    return smoothed;
+}
+
 function drawTimeTicks(svg, sorted, drawW, W, H, pad) {
     const now = new Date();
     const oldestSecondsAgo = sorted[0].seconds_ago;
@@ -353,7 +401,8 @@ function drawSparkline(points) {
     if (!points || points.length < 1) return;
 
     const sorted = [...points].sort((a, b) => b.seconds_ago - a.seconds_ago);
-    const delays = sorted.map(p => Number(p.total_delay_minutes));
+    const smoothed = smoothDelayHistory(sorted);
+    const delays = smoothed.map(p => Number(p.total_delay_minutes));
     const latest = delays[delays.length - 1];
     const labelText = Number.isFinite(latest) ? `${Math.round(latest)}m` : '--';
 
