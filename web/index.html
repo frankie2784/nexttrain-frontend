@@ -95,6 +95,22 @@
             text-align: right;
         }
 
+        @keyframes sparkline-pulse {
+            0%, 100% { opacity: 0.18; transform: scale(0.95); }
+            50% { opacity: 0.35; transform: scale(1.1); }
+        }
+
+        #sparkline-svg .sparkline-halo,
+        #sparkline-svg .sparkline-halo-inner {
+            transform-box: fill-box;
+            transform-origin: center;
+            animation: sparkline-pulse 1.8s ease-in-out infinite;
+        }
+
+        #sparkline-svg .sparkline-halo-inner {
+            animation-duration: 1.2s;
+        }
+
         /* ── Station picker ── */
         #station-select {
             width: 100%;
@@ -346,13 +362,10 @@ function drawSparkline(points) {
         }));
     };
 
-    const addCircle = (cx, cy, r, fill) => {
-        svg.appendChild(createSvgElement('circle', {
-            cx,
-            cy,
-            r,
-            fill,
-        }));
+    const addCircle = (cx, cy, r, fill, className) => {
+        const attrs = { cx, cy, r, fill };
+        if (className) attrs.class = className;
+        svg.appendChild(createSvgElement('circle', attrs));
     };
 
     if (n < 2 || maxD <= 0) {
@@ -381,9 +394,9 @@ function drawSparkline(points) {
     const tipY = yFor(latest);
     const tipColour = delayColour(latest);
 
-    addCircle(tipX, tipY, 20, rgba(tipColour, 0.14));
-    addCircle(tipX, tipY, 12, rgba(tipColour, 0.28));
-    addCircle(tipX, tipY, 5, rgb(tipColour));
+    addCircle(tipX, tipY, 20, rgba(tipColour, 0.14), 'sparkline-halo');
+    addCircle(tipX, tipY, 12, rgba(tipColour, 0.28), 'sparkline-halo-inner');
+    addCircle(tipX, tipY, 5, rgb(tipColour), 'sparkline-tip');
 
     document.getElementById('delay-value').textContent = Math.round(latest);
     const colour = rgb(tipColour);
