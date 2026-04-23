@@ -95,20 +95,41 @@
             text-align: right;
         }
 
-        @keyframes sparkline-pulse {
-            0%, 100% { opacity: 0.18; transform: scale(0.95); }
-            50% { opacity: 0.35; transform: scale(1.1); }
+        @keyframes sparkline-pulse-inner {
+            0%, 100% { opacity: 0.28; transform: scale(0.9); }
+            40% { opacity: 0.75; transform: scale(1.15); }
+            60% { opacity: 0.45; transform: scale(1.05); }
+        }
+
+        @keyframes sparkline-pulse-outer {
+            0%, 100% { opacity: 0.14; transform: scale(0.95); }
+            50% { opacity: 0.48; transform: scale(1.12); }
+            70% { opacity: 0.22; transform: scale(1.02); }
         }
 
         #sparkline-svg .sparkline-halo,
-        #sparkline-svg .sparkline-halo-inner {
+        #sparkline-svg .sparkline-halo-inner,
+        #sparkline-svg .sparkline-tip {
             transform-box: fill-box;
             transform-origin: center;
-            animation: sparkline-pulse 1.8s ease-in-out infinite;
         }
 
         #sparkline-svg .sparkline-halo-inner {
-            animation-duration: 1.2s;
+            animation: sparkline-pulse-inner 1.0s ease-in-out infinite;
+        }
+
+        #sparkline-svg .sparkline-halo {
+            animation: sparkline-pulse-outer 1.5s ease-in-out infinite 0.18s;
+        }
+
+        #sparkline-svg .sparkline-tip {
+            animation: sparkline-pulse-tip 1.3s ease-in-out infinite 0.1s;
+        }
+
+        @keyframes sparkline-pulse-tip {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            45% { opacity: 1; transform: scale(1.05); }
+            60% { opacity: 0.9; transform: scale(0.98); }
         }
 
         /* ── Station picker ── */
