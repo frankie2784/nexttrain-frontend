@@ -316,7 +316,7 @@ function drawSparkline(points) {
     if (!points || points.length < 1) return;
 
     const sorted = [...points].sort((a, b) => b.seconds_ago - a.seconds_ago);
-    const delays = sorted.map(p => p.total_delay_seconds / 60);
+    const delays = sorted.map(p => Number(p.total_delay_minutes));
     const latest = delays[delays.length - 1];
     const labelText = Number.isFinite(latest) ? `${Math.round(latest)}m` : '--';
 
