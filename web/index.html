@@ -260,16 +260,11 @@
 <script>
 'use strict';
 
-const API_URL = '__API_URL__';
+const API_URL = '__API_URL__' !== '__API_URL__'
+    ? '__API_URL__'
+    : window.location.origin;
 const API_KEY = '__API_KEY__';
 const HEADERS = API_KEY ? { 'X-Api-Key': API_KEY } : {};
-
-function resolveApiUrl() {
-    if (API_URL === '__API_URL__') {
-        throw new Error('API_URL not configured. Replace __API_URL__ with your remote API endpoint before deploying.');
-    }
-    return API_URL;
-}
 
 function lerp(a, b, t) { return a.map((c, i) => Math.round(c + (b[i] - c) * t)); }
 function rgb([r, g, b]) { return `rgb(${r},${g},${b})`; }
@@ -483,7 +478,7 @@ function drawSparkline(points) {
 
 async function fetchSparkline() {
     try {
-        const res = await fetch(`${resolveApiUrl()}/delay_history`, { headers: HEADERS });
+        const res = await fetch(`${API_URL}/delay_history`, { headers: HEADERS });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         drawSparkline(data.points);
@@ -497,7 +492,7 @@ async function fetchSparkline() {
 async function loadStations() {
     const sel = document.getElementById('station-select');
     try {
-        const res = await fetch(`${resolveApiUrl()}/stations`, { headers: HEADERS });
+        const res = await fetch(`${API_URL}/stations`, { headers: HEADERS });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         sel.innerHTML = '<option value="">— Pick a station —</option>';
@@ -529,7 +524,7 @@ async function fetchDepartures(stopId) {
     const list = document.getElementById('departures-list');
     list.innerHTML = '<div class="placeholder-msg">Loading&hellip;</div>';
     try {
-        const url = `${resolveApiUrl()}/departures?origin_gtfs_id=${encodeURIComponent(stopId)}&max_results=6`;
+        const url = `${API_URL}/departures?origin_gtfs_id=${encodeURIComponent(stopId)}&max_results=6`;
         const res = await fetch(url, { headers: HEADERS });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
